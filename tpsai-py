@@ -1,0 +1,46 @@
+#! /usr/bin/python
+
+class Reference:
+	"""\
+	Something which refers to something else.
+	"""
+
+class Asset(Reference):
+	"""\
+	An asset is anything which has value to the computer.
+	"""
+	pass
+
+class Threat(Reference):
+	"""\
+	A threat is anything which could possibly hurt the computer.
+	"""
+	pass
+
+class Neutral(Asset, Threat):
+	"""\
+	A Neutral object is anything which could possibly be an asset or a threat to the computer.
+	"""
+	pass
+
+def run():
+	# Download the entire universe
+
+	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
+
+	# Figure out which Assets can be used to eliminate Threats (e)
+
+	# Figure out which Assets can be used to acquire Neutral (a)
+
+	# Figure out which Assets can be used to produce more Assets (p)
+
+	# Figure out which combinations of (e, a, p) are possible and how long it will take to complete each combination
+
+	# Calculate the top x outcomes of doing the combinations
+	
+	# Impliment combination where the outcome is the most posative
+
+
+if __name__ == "__main__":
+	run()
+
