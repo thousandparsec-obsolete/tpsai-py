@@ -1,5 +1,59 @@
 #! /usr/bin/python
 
+class Cache(object):
+	"""\
+	This is the a cache of the data downloaded from the network. 
+	
+	It can be pickled and restored at a later date to preserve the data accross application runs.
+	"""
+	def __init__(self):
+		class ChangeDict(dict):
+			"""\
+			A simple dictionary which also stores the "times" an object was last updated.
+
+			Used so that we only upload/download items which have changed.
+			"""
+			def __init__(self):
+				dict.__init__(self)
+				self.times = {}
+			
+			def __setitem__(self, key, value):
+				"""\
+				This set item is special, it only takes keys of the form,
+				(<last modified time>, <normal key>)
+				"""
+				if type(value) is TupleType and len(value) == 2:
+					self.times[key] = value[0]
+					value = value[1]
+				else:
+					self.times[key] = -1
+				dict.__setitem__(self, key, value)
+		
+			def __delitem__(self, key):
+				del self.times[key]
+				dict.__delitem__(self, key)
+
+		# Features
+		self.features		= []
+
+		# The object stuff
+		self.objects		= ChangeDict()
+		self.orders			= ChangeDict()
+		self.orders_probe	= ChangeDict()
+
+		# The message boards
+		self.boards			= ChangeDict()
+		self.messages		= ChangeDict()
+
+		# Design stuff
+		self.categories		= ChangeDict()
+		self.designs		= ChangeDict()
+		self.components		= ChangeDict()
+		self.properties		= ChangeDict()
+
+		self.players		= ChangeDict()
+		self.resources		= ChangeDict()
+
 class Reference:
 	"""\
 	Something which refers to something else.
@@ -25,8 +79,133 @@ class Neutral(Asset, Threat):
 
 def run():
 	# Download the entire universe
+	if connection.setup(host=host, port=port, debug=debug):
+		return
+			
+	if failed(connection.connect()):
+		return
+
+	if failed(connection.login(username, password)):
+		return
+		
+	# Create the cache
+	cache = Cache()
+
+	# Get the features this server support
+	cache.features = connection.features()
+	
+	for id, time in connection.get_object_ids(iter=True):
+		if not cache.objects.has_key(id) or time > cache.objects.times[id]:
+			object = connection.get_objects(id=id)[0]
+			
+			# Did we download the object okay?
+			if failed(object):
+				# Clean up the object
+				if cache.objects.has_key(id):
+					del cache.objects[id]
+
+					if cache.orders.has_key(id):
+						del cache.orders[id]
+				continue
+
+			cache.objects[id] = (time, object)
+
+			# Download the orders from this object
+			cache.orders[id] = []
+			for order in connection.get_orders(id, range(0, object.order_number)):
+				if failed(order):
+					break
+				cache.orders[id].append(order)
+
+		elif constants.FEATURE_ORDERED_OBJECT in cache.features:
+			break
+			
+	print "Objects ["
+	for id,o in cache.objects.items():
+		print " %s : %s ," % (id, o),
+	print "]"
+
+	for id, time in connection.get_board_ids(iter=True):
+		if not cache.boards.has_key(id) or time > cache.boards.times[id]:
+			board = connection.get_boards(id=id)[0]
+
+			# Did we download the board okay?
+			if failed(board):
+				# Clean up the board
+				if cache.boards.has_key(id):
+					del cache.boards[id]
+					if cache.messages.has_key(id):
+						del cache.messages[id]
+				continue
+
+			cache.boards[id] = (time, board)
+
+			# Download the orders from this object
+			cache.messages[id] = []
+			for message in connection.get_messages(id, range(0, board.number)):
+				if failed(message):
+					break
+				cache.messages[id].append(message)
+		elif constants.FEATURE_ORDERED_BOARD in cache.features:
+			break
+				
+	print "Boards ["
+	for id,o in cache.boards.items():
+	print " %s : %s ," % (id, o)
+	print "]"
+
+	for id, time in connection.get_orderdesc_ids(iter=True):
+		desc = connection.get_orderdescs(id=id)[0]
+
+		# Did we download the board okay?
+		if not failed(desc):
+			desc.register()
+		else:
+			print "Warning: failed to get %i" % id, desc
+
+	def get_all(get_ids, get, cache, feature, up=up):
+		for id, time in get_ids(iter=True):
+			if not cache.has_key(id) or time > cache.times[id]:
+				frame = get(id=id)[0]
+	
+				# Did we download the board okay?
+				if failed(frame):
+					print "Failed to get %i removing" % id
+					if cache.has_key(id):
+						del cache[id]
+					continue
+	
+				cache[id] = (time, frame)
+	
+			elif feature in cache.features:
+				up("Skipping remaining as already cached!")
+				break
+			
+		print name, "[",
+		for object in cache.values():
+			print " <'%s' %i>" % (object.name, object.id)
+		print "]"
+	
+	get_all(connection.get_category_ids, connection.get_categories, 
+				cache.categories, constants.FEATURE_ORDERED_CATEGORY)
+	get_all(connection.get_design_ids, connection.get_designs, 
+				cache.designs, constants.FEATURE_ORDERED_DESIGN)
+	get_all(connection.get_component_ids, connection.get_components, 
+				cache.components, constants.FEATURE_ORDERED_COMPONENT)
+	get_all(connection.get_property_ids, connection.get_properties, 
+				cache.properties, constants.FEATURE_ORDERED_PROPERTY)
+	get_all(connection.get_resource_ids, connection.get_resources, 
+				cache.resources, constants.FEATURE_ORDERED_RESOURCE)
 
 	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
+	for object in cache.objects:
+		if hasattr(object, 'owner'):
+			if object.owner == 0:
+				neutral.append(Neutral(object))
+			elif object.owner != pid:
+				asset.append(Asset(object))
+			else:
+				threats.append(Threat(object))
 
 	# Figure out which Assets can be used to eliminate Threats (e)
 
