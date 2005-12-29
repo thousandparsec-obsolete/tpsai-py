@@ -1,0 +1,4 @@
+
+This AI bot requires the following be installed,
+	libtpproto-py						- Network Library
+	libtpclient-py						- Client Support Library
