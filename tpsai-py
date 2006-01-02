@@ -3,6 +3,8 @@
 from tp.netlib import Connection, failed, constants
 from tp.client.cache import Cache
 
+version = (0, 0, 1)
+
 class Reference:
 	"""\
 	Something which refers to something else.
@@ -45,7 +47,7 @@ def run():
 		print "Unable to connect to the host."
 		return
 			
-	if failed(connection.connect()):
+	if failed(connection.connect("tpsai-py/%i.%i.%i" % version)):
 		print "Unable to connect to the host."
 		return
 
