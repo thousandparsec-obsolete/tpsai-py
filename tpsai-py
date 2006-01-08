@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-from tp.netlib import Connection, failed, constants
+from tp.netlib import Connection, failed, constants, objects
 from tp.client.cache import Cache
 
 version = (0, 0, 1)
@@ -20,14 +20,41 @@ class Asset(Reference):
 	"""\
 	An asset is anything which has value to the computer.
 	"""
-	pass
+
+	def power(self):
+		"""\
+		Returns how powerful an object is.
+		"""
+		# A Planet is always has no power
+		# A fleet is as powerful as the sum of it parts
 
 class Threat(Reference):
 	"""\
 	A threat is anything which could possibly hurt the computer.
 	"""
-	pass
 
+	def threat(self):
+		"""\
+		This function returns two values.
+
+		The first value is how threatening the object is in "absolute" terms.
+		The second value is how soon this threat must be delt with.
+		"""
+		# Planets are more threatening but can be dealt with over a longer period of time
+		# Ships are less threatening but are more urgent
+		#	Unarmed ships are ignored
+		#   Big groups of ships are more important
+		# Threats which are closer to assets are more threatening
+		pass
+	
+	def power(self):
+		"""\
+		Returns how powerful an object is.
+		"""
+		# A planet is equal to x plus a fudge factor
+		# A fleet is equal to the sum of its parts
+		#   plus a "reinforment factor" of other close by threats
+	
 class Neutral(Asset, Threat):
 	"""\
 	A Neutral object is anything which could possibly be an asset or a threat to the computer.
@@ -65,26 +92,33 @@ def run():
 	pid = cache.players[0].id
 	print "My ID is ", pid
 
-	neutral = []
-	asset = []
+	neutrals = []
+	assets = []
 	threats = []
 
 	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
 	for object in cache.objects.values():
 		if hasattr(object, 'owner'):
 			if object.owner in (0, -1):
-				neutral.append(Neutral(object))
+				neutrals.append(Neutral(object))
 			elif object.owner == pid:
-				asset.append(Asset(object))
+				assets.append(Asset(object))
 			else:
 				threats.append(Threat(object))
 
 	import pprint
-	pprint.pprint(neutral)
-	pprint.pprint(asset)
+	pprint.pprint(neutrals)
+	pprint.pprint(assets)
 	pprint.pprint(threats)
 
+	map = {}
+
 	# Figure out which Assets can be used to eliminate Threats (e)
+	for asset in assets:
+		map[asset] = []
+		for threat in threats:
+			if threat.power() < asset.power():
+				map[asset].append(threat)
 
 	# Figure out which Assets can be used to acquire Neutral (a)
 
