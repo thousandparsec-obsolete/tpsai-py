@@ -5,6 +5,14 @@ from tp.client.cache import Cache
 
 version = (0, 0, 1)
 
+import math
+
+def dist(a, b):
+	a = a.ref.pos
+	b = b.ref.pos
+
+	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
+
 class Reference:
 	"""\
 	Something which refers to something else.
@@ -27,6 +35,7 @@ class Asset(Reference):
 		"""
 		# A Planet is always has no power
 		# A fleet is as powerful as the sum of it parts
+		return 10
 
 class Threat(Reference):
 	"""\
@@ -54,6 +63,7 @@ class Threat(Reference):
 		# A planet is equal to x plus a fudge factor
 		# A fleet is equal to the sum of its parts
 		#   plus a "reinforment factor" of other close by threats
+		return 10
 	
 class Neutral(Asset, Threat):
 	"""\
@@ -63,9 +73,22 @@ class Neutral(Asset, Threat):
 
 def run():
 	debug = False
-	host = 'tp://localhost'
-	username = "mithro@tp"
-	password = "me"
+
+	import sys
+	print sys.argv
+
+	if len(sys.argv) > 1:
+		host = sys.argv.pop(1)
+	else:
+		host = 'tp://localhost'
+	if len(sys.argv) > 1:
+		username = sys.argv.pop(1)
+	else:
+		username = "mithro@tp"
+	if len(sys.argv) > 1:
+		password = sys.argv.pop(1)
+	else:
+		password = "me"
 	
 	connection = Connection()
 
@@ -118,16 +141,49 @@ def run():
 		map[asset] = []
 		for threat in threats:
 			if threat.power() < asset.power():
-				map[asset].append(threat)
+				priority = threat.power()/dist(asset, threat)
+
+				map[asset].append((priority, "Attack", threat))
+
+	# Figure out how if Threats can be elimited by merging Assets
+	for threat in threats:
+		pass
 
 	# Figure out which Assets can be used to acquire Neutral (a)
+	for asset in assets:
+		# Only assets which have the colonise order are useful for acquring Neutral
+		if not 5 in asset.ref.order_types: # FIXME: Shouldn't use a number
+			continue
+		for neutral in neutrals:
+			# Only able to colonise planets
+			if not neutral.ref.otype is 3: # FIXME: Shouldn't use a number
+				continue
+
+			priority = 100/dist(asset, neutral)
+			map[asset].append((priority, "Colonise", neutral))
 
 	# Figure out which Assets can be used to produce more Assets (p)
+	for asset in assets:
+		# Only assets which have the build order are useful for creating new Assets
+		if not 2 in asset.ref.order_types: # FIXME: Shouldn't use a number
+			continue
+
+		# Figure out what we should be building
+		# if our assets >= their assets build colonise ships
+		# otherwise build 
+
+		map[asset].append((10, "Build"))
+
+	pprint.pprint(map)
+
+	# Figure out which is the best deal
+	for asset, todo in map.iteritems():
+		# Calculate the priority for each item
+		todo.sort()
+
+	pprint.pprint(map)
 
 	# Figure out which combinations of (e, a, p) are possible and how long it will take to complete each combination
-
-	# Calculate the top x outcomes of doing the combinations
-	
 	# Impliment combination where the outcome is the most posative
 
 
