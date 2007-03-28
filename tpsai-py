@@ -1,6 +1,8 @@
 #! /usr/bin/python
 
-from tp.netlib import Connection, failed, constants, objects
+from tp.netlib import Connection
+from tp.netlib import failed, constants, objects
+from tp.netlib.client import url2bits
 from tp.client.cache import Cache
 
 version = (0, 0, 1)
@@ -55,7 +57,7 @@ class Threat(Reference):
 		#   Big groups of ships are more important
 		# Threats which are closer to assets are more threatening
 		pass
-	
+
 	def power(self):
 		"""\
 		Returns how powerful an object is.
@@ -64,12 +66,17 @@ class Threat(Reference):
 		# A fleet is equal to the sum of its parts
 		#   plus a "reinforment factor" of other close by threats
 		return 10
-	
+
 class Neutral(Asset, Threat):
 	"""\
 	A Neutral object is anything which could possibly be an asset or a threat to the computer.
 	"""
 	pass
+
+
+MOVE_ORDER = 1
+BUILD_ORDER = 2
+COLONISE_ORDER = 3
 
 def run():
 	debug = False
@@ -78,25 +85,19 @@ def run():
 	print sys.argv
 
 	if len(sys.argv) > 1:
-		host = sys.argv.pop(1)
+		uri = sys.argv.pop(1)
 	else:
-		host = 'tp://localhost'
-	if len(sys.argv) > 1:
-		username = sys.argv.pop(1)
-	else:
-		username = "mithro@tp"
-	if len(sys.argv) > 1:
-		password = sys.argv.pop(1)
-	else:
-		password = "me"
-	
+		uri = 'tp://tpsai-py:cannonfodder@localhost/'
+
+	host, username, game, password = url2bits(uri)
+
 	connection = Connection()
 
 	# Download the entire universe
-	if connection.setup(host=host, debug=debug):
+	if connection.setup(host=host, debug=False):
 		print "Unable to connect to the host."
 		return
-			
+
 	if failed(connection.connect("tpsai-py/%i.%i.%i" % version)):
 		print "Unable to connect to the host."
 		return
@@ -104,11 +105,11 @@ def run():
 	if failed(connection.login(username, password)):
 		print "Username / Password incorrect."
 		return
-		
+
 	# Create the cache
 	def callback(*args, **kw):
 		print args, kw
-	
+
 	cache = Cache(Cache.key(host, username))
 	cache.update(connection, callback)
 
@@ -139,8 +140,9 @@ def run():
 	# Figure out which Assets can be used to eliminate Threats (e)
 	for asset in assets:
 		map[asset] = []
+
 		for threat in threats:
-			if threat.power() < asset.power():
+			if threat.power() <= asset.power():
 				priority = threat.power()/dist(asset, threat)
 
 				map[asset].append((priority, "Attack", threat))
@@ -152,36 +154,72 @@ def run():
 	# Figure out which Assets can be used to acquire Neutral (a)
 	for asset in assets:
 		# Only assets which have the colonise order are useful for acquring Neutral
-		if not 5 in asset.ref.order_types: # FIXME: Shouldn't use a number
+		if not COLONISE_ORDER in asset.ref.order_types:
 			continue
 		for neutral in neutrals:
 			# Only able to colonise planets
 			if not neutral.ref.otype is 3: # FIXME: Shouldn't use a number
 				continue
 
-			priority = 100/dist(asset, neutral)
+			if asset.ref.pos != neutral.ref.pos:
+				priority = 100/dist(asset, neutral)
+			else:
+				priority = 100
 			map[asset].append((priority, "Colonise", neutral))
 
 	# Figure out which Assets can be used to produce more Assets (p)
 	for asset in assets:
 		# Only assets which have the build order are useful for creating new Assets
-		if not 2 in asset.ref.order_types: # FIXME: Shouldn't use a number
+		if not BUILD_ORDER in asset.ref.order_types: # FIXME: Shouldn't use a number
 			continue
 
 		# Figure out what we should be building
 		# if our assets >= their assets build colonise ships
 		# otherwise build 
 
-		map[asset].append((10, "Build"))
+		# Figure out what we can build
+		#order = connection.probe_order(asset.ref.id, 2, [])
 
-	pprint.pprint(map)
+		map[asset].append((10, "Build"))
+	
+
+#	pprint.pprint(map)
+
+	print "--------------"
 
 	# Figure out which is the best deal
 	for asset, todo in map.iteritems():
+		if len(todo) == 0:
+			continue
+
 		# Calculate the priority for each item
 		todo.sort()
 
-	pprint.pprint(map)
+		# Remove any outstanding orders
+		if asset.ref.order_number > 0:
+			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
+
+		# Issue the new order
+		order = todo[-1]
+		print asset.ref.id, "Doing ", order
+
+		if order[1] in ("Colonise", "Attack"):
+			desire = order[2]
+
+			# Are we at the same location?
+			if asset.ref.pos != desire.ref.pos:
+				# We need to issue a move order instead.
+				connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos)
+				continue
+
+			# If it's a colonise order, we better colonise the thing
+			if order[1] == "Colonise":
+				connection.insert_order(asset.ref.id, -1, COLONISE_ORDER, desire.ref.id)
+
+		if order[1] == "Build":
+			# Build a frigate
+			connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(2,1)], 0, "A robot army!")
+			
 
 	# Figure out which combinations of (e, a, p) are possible and how long it will take to complete each combination
 	# Impliment combination where the outcome is the most posative
