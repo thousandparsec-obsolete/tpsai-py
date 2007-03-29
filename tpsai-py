@@ -7,7 +7,9 @@ from tp.client.cache import Cache
 
 version = (0, 0, 1)
 
+import copy
 import math
+import pprint
 
 def dist(a, b):
 	a = a.ref.pos
@@ -15,68 +17,101 @@ def dist(a, b):
 
 	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
-class Reference:
-	"""\
-	Something which refers to something else.
-	"""
-	def __init__(self, ref):
-		self.ref = ref
+from things import *
 
-	def __str__(self):
-		return "<%s ref=%r>" % (self.__class__, self.ref)
-	__repr__ = __str__
-
-class Asset(Reference):
-	"""\
-	An asset is anything which has value to the computer.
-	"""
-
-	def power(self):
-		"""\
-		Returns how powerful an object is.
-		"""
-		# A Planet is always has no power
-		# A fleet is as powerful as the sum of it parts
-		return 10
-
-class Threat(Reference):
-	"""\
-	A threat is anything which could possibly hurt the computer.
-	"""
-
-	def threat(self):
-		"""\
-		This function returns two values.
-
-		The first value is how threatening the object is in "absolute" terms.
-		The second value is how soon this threat must be delt with.
-		"""
-		# Planets are more threatening but can be dealt with over a longer period of time
-		# Ships are less threatening but are more urgent
-		#	Unarmed ships are ignored
-		#   Big groups of ships are more important
-		# Threats which are closer to assets are more threatening
-		pass
-
-	def power(self):
-		"""\
-		Returns how powerful an object is.
-		"""
-		# A planet is equal to x plus a fudge factor
-		# A fleet is equal to the sum of its parts
-		#   plus a "reinforment factor" of other close by threats
-		return 10
-
-class Neutral(Asset, Threat):
-	"""\
-	A Neutral object is anything which could possibly be an asset or a threat to the computer.
-	"""
-	pass
-
-
+PLANET_TYPE = 3
 MOVE_ORDER = 1
 BUILD_ORDER = 2
 COLONISE_ORDER = 3
+
+def tasks_cando(assets, tasks):
+	"""\
+	Figures out which tasks each asset can do.
+	"""
+	map = {}
+	for asset in assets:
+		map[asset] = []
+
+		# Figure out which tasks we can do
+		for task in tasks:
+			# Check we can go where needed for this task
+			if hasattr(task.ref.ref, "pos") and asset.ref.pos != task.ref.ref.pos:
+				if not MOVE_ORDER in asset.ref.order_types:
+					continue
+
+			if task.task in (Task.COLONISE, Task.TAKEOVER):
+				# Only assets which have the colonise order are useful for these tasks
+				if not COLONISE_ORDER in asset.ref.order_types:
+					continue
+
+				if task.task == Task.COLONISE:
+					if asset.ref.pos != task.ref.ref.pos:
+						priority = 100/dist(asset, task.ref)
+					else:
+						priority = 100
+					map[asset].append((priority, task))
+
+			if task.task in (Task.DESTROY, Task.TAKEOVER):
+				# FIXME: This won't work when we merge the Threats
+				if task.ref.power() <= asset.power():
+					if asset.ref.pos != task.ref.ref.pos:
+						priority = task.ref.power()/dist(asset, task.ref)
+					else:
+						priority = 100
+					map[asset].append((priority, task))
+
+			if task.task == Task.BUILD:
+				if not BUILD_ORDER in asset.ref.order_types:
+					continue
+
+				# The closer we are to the target, the more we want to build this
+				if asset.ref.pos != task.ref.ref.ref.pos:
+					priority = 100/dist(asset, task.ref.ref)
+				else:
+					priority = 100
+				map[asset].append((priority, task))
+
+	return map
+
+PRIORITY = 0
+TASK 	 = 1
+BY 		 = 1
+def tasks_assign(assets, map):
+	"""
+	Assigns assets to each task.
+	"""
+	assets = copy.copy(assets)
+
+	taken = []
+	while len(assets) > 0:
+		asset = assets.pop(0)
+		print "Assigning task for ", asset,
+
+		todo = map[asset]
+		todo.sort()
+
+		# Find the first task which is isn't taken by something with a higher priority.
+		while len(todo) > 0 and todo[-1][TASK].taken[PRIORITY] > todo[-1][PRIORITY]:
+			# Remove this task as somebody else can do it better
+			todo.pop(-1)
+
+
+		# Nothing for me to do
+		if len(todo) == 0:
+			continue
+
+		print todo[-1]
+		priority, task = todo[-1]
+
+		# Is this task assigned to another asset?
+		if task.taken[BY] != None and task.taken[BY] != asset:
+			# Put the asset back in the queue as we will take this task
+			assets.append(task.taken[BY])
+
+		taken.append(task)
+		task.taken = (priority, asset)
+
+	return taken
 
 def run():
 	debug = False
@@ -130,100 +165,107 @@ def run():
 			else:
 				threats.append(Threat(object))
 
-	import pprint
-	pprint.pprint(neutrals)
-	pprint.pprint(assets)
-	pprint.pprint(threats)
+	# Now we need to collect all threats 
+	#  - All threats in a single location are merge
+	#  - All threats have a reenforment factor added (dependent on other threats)
 
-	map = {}
-
-	# Figure out which Assets can be used to eliminate Threats (e)
-	for asset in assets:
-		map[asset] = []
-
-		for threat in threats:
-			if threat.power() <= asset.power():
-				priority = threat.power()/dist(asset, threat)
-
-				map[asset].append((priority, "Attack", threat))
-
-	# Figure out how if Threats can be elimited by merging Assets
-	for threat in threats:
-		pass
-
-	# Figure out which Assets can be used to acquire Neutral (a)
-	for asset in assets:
-		# Only assets which have the colonise order are useful for acquring Neutral
-		if not COLONISE_ORDER in asset.ref.order_types:
-			continue
-		for neutral in neutrals:
-			# Only able to colonise planets
-			if not neutral.ref.otype is 3: # FIXME: Shouldn't use a number
-				continue
-
-			if asset.ref.pos != neutral.ref.pos:
-				priority = 100/dist(asset, neutral)
-			else:
-				priority = 100
-			map[asset].append((priority, "Colonise", neutral))
-
-	# Figure out which Assets can be used to produce more Assets (p)
-	for asset in assets:
-		# Only assets which have the build order are useful for creating new Assets
-		if not BUILD_ORDER in asset.ref.order_types: # FIXME: Shouldn't use a number
-			continue
-
-		# Figure out what we should be building
-		# if our assets >= their assets build colonise ships
-		# otherwise build 
-
-		# Figure out what we can build
-		#order = connection.probe_order(asset.ref.id, 2, [])
-
-		map[asset].append((10, "Build"))
+	# Now create a list of tasks which need to be done.
+	tasks = []
 	
+	# For each threat, we need to eliminate it or take it over
+	for threat in threats:
+		if PLANET_TYPE in threat.subtype:
+			tasks.append(Task(Task.TAKEOVER, threat))
+		else:
+			tasks.append(Task(Task.DESTROY, threat))
 
-#	pprint.pprint(map)
+	# For each neutral we want to colonise the planets
+	for neutral in neutrals:
+		if not neutral.ref.otype is PLANET_TYPE:
+			continue
+		tasks.append(Task(Task.COLONISE, neutral))
 
-	print "--------------"
+	print "------------------------------------------------------"
+	print "Tasks I have to do..."
+	pprint.pprint(tasks)
+	print "------------------------------------------------------"
 
-	# Figure out which is the best deal
-	for asset, todo in map.iteritems():
-		if len(todo) == 0:
+	print "\nStep 1. Finding which assets can do the tasks.."
+	print "------------------------------------------------------------------"
+	map = tasks_cando(assets, tasks)
+	print "\nStep 2. Assigning tasks to assets.."
+	print "------------------------------------------------------------------"
+	tasks_assign(assets, map)
+
+	# Now are there tasks we can do by building things
+	print "\nStep 3. Figuring out what we should build.."
+	print "------------------------------------------------------------------"
+	for task in copy.copy(tasks):
+		# This task is already satisified
+		if task.taken[BY] != None:
 			continue
 
-		# Calculate the priority for each item
-		todo.sort()
+		if task.task != Task.BUILD:
+			tasks.append(Task(Task.BUILD, task))
+			tasks.remove(task)
+
+	print "\nStep 4. Finding out which assets can do the tasks.."
+	print "------------------------------------------------------------------"
+	map = tasks_cando(assets, tasks)
+	print "\nStep 5. Assigning assets.."
+	print "------------------------------------------------------------------"
+	tasks_assign(assets, map)
+
+	# All tasks which can be done should be assigned now..	
+	pprint.pprint(tasks)
+
+	# Set all the orders so the tasks are performed
+	print "\nStep 6. Issuing orders to do tasks.."
+	print "------------------------------------------------------------------"
+	for task in tasks:
+		if task.taken[BY] == None:
+			continue
+
+		asset = task.taken[BY]
 
 		# Remove any outstanding orders
 		if asset.ref.order_number > 0:
 			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
 
 		# Issue the new order
-		order = todo[-1]
-		print asset.ref.id, "Doing ", order
-
-		if order[1] in ("Colonise", "Attack"):
-			desire = order[2]
+		if task.task in (Task.COLONISE, Task.DESTROY, Task.TAKEOVER):
+			desire = task.ref
 
 			# Are we at the same location?
 			if asset.ref.pos != desire.ref.pos:
+				print "Issuing orders to %s move %s" % (asset, desire.ref.pos),
 				# We need to issue a move order instead.
 				connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos)
-				continue
 
 			# If it's a colonise order, we better colonise the thing
-			if order[1] == "Colonise":
+			elif task.task in (Task.COLONISE, Task.TAKEOVER):
+				print "Issuing orders to %s colonise %r" % (asset, desire.ref),
 				connection.insert_order(asset.ref.id, -1, COLONISE_ORDER, desire.ref.id)
 
-		if order[1] == "Build":
-			# Build a frigate
-			connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(2,1)], 0, "A robot army!")
-			
+		if task.task == Task.BUILD:
+			if task.ref.task == Task.COLONISE:
+				# If we are referencing a colonise, better build a frigate
+				print "Issuing orders to %s to build a frigate" % (asset,),
+				connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(2,1)], 0, "A robot army!")
+			if task.ref.task == Task.DESTROY:
+				# Better build a battleship
+				print "Issuing orders to %s to build a battleship" % (asset,),
+				connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(3,1)], 0, "A robot army!")
+			if task.ref.task == Task.TAKEOVER:
+				# Better build a battleship and a frigate
+				print "Issuing orders to %s to build a battleship and frigate" % (asset,),
+				connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(2,1), (3,1)], 0, "A robot army!")
 
-	# Figure out which combinations of (e, a, p) are possible and how long it will take to complete each combination
-	# Impliment combination where the outcome is the most posative
-
+		# Order should complete in
+		result = connection.get_orders(asset.ref.id, 0)[0]
+		if not result:
+			raise IOError("Wasn't able to issue an order for some reason!")
+		print "(will complete in %s turns)" % result.turns
 
 if __name__ == "__main__":
 	run()
