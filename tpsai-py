@@ -20,6 +20,8 @@ def dist(a, b):
 from things import *
 
 PLANET_TYPE = 3
+FLEET_TYPE  = 4
+
 MOVE_ORDER = 1
 BUILD_ORDER = 2
 COLONISE_ORDER = 3
@@ -46,7 +48,6 @@ def tasks_cando(assets, tasks):
 
 				map[asset].append((priority, task))
 				continue
-
 
 			# Check we can go where needed for this task
 			if hasattr(task.ref.ref, "pos") and asset.ref.pos != task.ref.ref.pos:
@@ -89,31 +90,38 @@ def tasks_assign(assets, map):
 	taken = []
 	while len(assets) > 0:
 		asset = assets.pop(0)
-		print "Assigning task for ", asset,
 
-		todo = map[asset]
+		print
+		print
+		print "Assigning task for ", asset
+
+		todo = copy.copy(map[asset])
 		todo.sort()
 
-		# Find the first task which is isn't taken by something with a higher priority.
-		while len(todo) > 0 and todo[-1][TASK].taken[PRIORITY] >= todo[-1][PRIORITY]:
-			# Remove this task as somebody else can do it better
-			todo.pop(-1)
+		while len(todo) > 0:
+			priority, task = todo.pop(-1)
 
+			# Is this task already assigned?
+			if task.taken[BY] != None:
+				# If we have a higher priority then the currently assigned asset ignore it
+				if task.taken[PRIORITY] >= priority:
+					continue
+
+				print task.taken[PRIORITY], priority
+				print "Going to take", task, "returning", task.taken[BY], "to retasked..."
+
+				# Put the asset back in the queue as we will take this task
+				assets.insert(0, task.taken[BY])
+
+			task.taken = (priority, asset)
+			print "Assigned to", priority, task
+			taken.append(task)
+			break
+	
 		# Nothing for me to do
 		if len(todo) == 0:
 			print "Nothing.."
 			continue
-
-		priority, task = todo[-1]
-		print task
-
-		# Is this task assigned to another asset?
-		if task.taken[BY] != None and task.taken[BY] != asset:
-			# Put the asset back in the queue as we will take this task
-			assets.append(task.taken[BY])
-
-		taken.append(task)
-		task.taken = (priority, asset)
 
 	return taken
 
@@ -154,8 +162,8 @@ def run():
 
 	# Create the cache
 	def callback(*args, **kw):
-		print args, kw
-		#pass
+		#print args, kw
+		pass
 
 	cache = Cache(Cache.key(host, username))
 	cache.update(connection, callback)
@@ -211,14 +219,19 @@ def run():
 	print "\nStep 1. Finding which assets can do the tasks.."
 	print "------------------------------------------------------------------"
 	map = tasks_cando(assets, tasks)
+
 	print "\nStep 2. Assigning tasks to assets.."
 	print "------------------------------------------------------------------"
-	tasks_assign(assets, map)
+	taken = tasks_assign(assets, map)
 
 	# Now are there tasks we can do by building things
 	print "\nStep 3. Figuring out what we should build.."
 	print "------------------------------------------------------------------"
+
 	for task in copy.copy(tasks):
+		# Remove the task..
+		tasks.remove(task)
+
 		# This task is already satisified
 		if task.taken[BY] != None:
 			continue
@@ -226,7 +239,6 @@ def run():
 		if task.task != Task.BUILD:
 			# Build stuff for all tasks which can't be done already..
 			tasks.append(Task(Task.BUILD, task))
-			tasks.remove(task)
 
 	print "\nStep 4. Finding out which assets can do the tasks.."
 	print "------------------------------------------------------------------"
@@ -234,7 +246,7 @@ def run():
 
 	print "\nStep 5. Assigning assets.."
 	print "------------------------------------------------------------------"
-	tasks_assign(assets, map)
+	taken += tasks_assign(assets, map)
 
 	print 
 	print
@@ -244,19 +256,18 @@ def run():
 	# Set all the orders so the tasks are performed
 	print "\nStep 6. Issuing orders to do tasks.."
 	print "------------------------------------------------------------------"
-	for task in tasks:
-		if task.taken[BY] == None:
-			continue
-
-		print task
-
+	used_assets = []
+	for task in taken:
 		asset = task.taken[BY]
+		used_assets.append(asset)
 
 		# Remove any outstanding orders
 		if asset.ref.order_number > 0:
 			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
 
 		results = []
+
+		print task
 
 		# Issue the new order
 		if task.task in (Task.COLONISE, Task.DESTROY, Task.TAKEOVER):
@@ -295,6 +306,7 @@ def run():
 				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
 			
 		if len(results) == 0:
+			print
 			continue
 
 		for i, result in enumerate(results):
@@ -307,6 +319,26 @@ def run():
 				raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
 			print "Order %i will complete in %s turns" % (i, result[0].turns)
 		print
+
+	print
+	print "Checks..."
+	if len(assets) != len(used_assets):
+		print "Some assets don't have tasks!"
+		print " %i used assets, %s total assets" % (len(used_assets), len(assets))
+
+		s1 = set([x.ref.id for x in assets])
+		s2 = set([x.ref.id for x in used_assets])
+
+		if len(s2) != len(used_assets):
+			print "WARNING: For some reason issued orders twice to an object..."
+
+		for id in s1.difference(s2):
+			o = cache.objects[id]
+			print '\t', repr(o),
+			if FLEET_TYPE is o._subtype:
+				for shipid, amount in o.ships:
+					print (cache.designs[shipid].name, amount),
+			print
 
 if __name__ == "__main__":
 	import sys

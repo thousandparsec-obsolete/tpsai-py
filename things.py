@@ -149,9 +149,7 @@ class Task(Reference):
 			raise TypeError("Taken must be a tuple of length 2")
 		if not isinstance(value[0], float):
 			try:
-				value = list(value)
-				value[0] = float(value[0])
-				value = tuple(value)
+				value = (float(value[0]), value[1])
 			except:
 				raise TypeError("Taken's value[0] must be a float.")
 		if not isinstance(value[1], Reference) and not value[1] is None:
@@ -163,7 +161,7 @@ class Task(Reference):
 
 	def __str__(self):
 		if self.taken[1] != None:
-			return "<Task %s - %s (assigned to %s at %2.2f)>" % (self.task, self.ref, self.taken[1], self.taken[0])
+			return "<Task %s - %s (assigned to %s at %s)>" % (self.task, self.ref, self.taken[1], self.taken[0])
 		else:
 			return "<Task %s - %s (unassigned)>" % (self.task, self.ref)
 	__repr__ = __str__
