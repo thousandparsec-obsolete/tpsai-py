@@ -268,5 +268,13 @@ def run():
 		print "(will complete in %s turns)" % result.turns
 
 if __name__ == "__main__":
-	run()
+	import sys
+	if len(sys.argv) > 1 and sys.argv[1] == '-p':
+		sys.argv.pop(1)
+		import hotshot
+		prof = hotshot.Profile("hotshot_stats")
+		prof.runcall(run)
+		prof.close()
+	else:
+		run()
 
