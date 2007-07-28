@@ -87,7 +87,7 @@ def tasks_assign(assets, map):
 	"""
 	assets = copy.copy(assets)
 
-	taken = []
+	taken = set()
 	while len(assets) > 0:
 		asset = assets.pop(0)
 
@@ -115,7 +115,7 @@ def tasks_assign(assets, map):
 
 			task.taken = (priority, asset)
 			print "Assigned to", priority, task
-			taken.append(task)
+			taken.add(task)
 			break
 	
 		# Nothing for me to do
@@ -123,9 +123,9 @@ def tasks_assign(assets, map):
 			print "Nothing.."
 			continue
 
-	return taken
+	return list(taken)
 
-def run():
+def connect():
 	debug = False
 
 	import sys
@@ -160,12 +160,15 @@ def run():
 			print "Created username, but still couldn't login :/"
 			return
 
+	cache = Cache(Cache.key(host, username))
+	return connection, cache
+
+def run(connection, cache):
 	# Create the cache
 	def callback(*args, **kw):
 		#print args, kw
 		pass
 
-	cache = Cache(Cache.key(host, username))
 	cache.update(connection, callback)
 
 	pid = cache.players[0].id
@@ -184,12 +187,6 @@ def run():
 				assets.append(Asset(object))
 			else:
 				threats.append(Threat(object))
-
-	pprint.pprint(neutrals)
-	pprint.pprint(assets)
-	pprint.pprint(threats)
-	print
-	print
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
@@ -210,11 +207,6 @@ def run():
 		if not neutral.ref._subtype is PLANET_TYPE:
 			continue
 		tasks.append(Task(Task.COLONISE, neutral))
-
-	print "------------------------------------------------------"
-	print "Tasks I have to do..."
-	pprint.pprint(tasks)
-	print "------------------------------------------------------"
 
 	print "\nStep 1. Finding which assets can do the tasks.."
 	print "------------------------------------------------------------------"
@@ -251,7 +243,7 @@ def run():
 	print 
 	print
 	# All tasks which can be done should be assigned now..	
-	pprint.pprint(tasks)
+	#pprint.pprint(tasks)
 
 	# Set all the orders so the tasks are performed
 	print "\nStep 6. Issuing orders to do tasks.."
@@ -262,8 +254,9 @@ def run():
 		used_assets.append(asset)
 
 		# Remove any outstanding orders
-		if asset.ref.order_number > 0:
-			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
+#		if asset.ref.order_number > 0:
+#			continue
+#			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
 
 		results = []
 
@@ -275,16 +268,65 @@ def run():
 
 			# Are we at the same location?
 			if asset.ref.pos != desire.ref.pos:
-				print "Issuing orders to %s move %s" % (asset, desire.ref.pos)
-				# We need to issue a move order instead.
-				results.append(connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos))
+				while True:
+					pos = len(results)
+					if asset.ref.order_number > pos:
+						order = cache.orders[asset.ref.id][pos]
+
+						# Remove the order if it isn't a move order
+						if order.subtype != MOVE_ORDER:
+							print "First order wasn't a move order!"
+							connection.remove_orders(asset.ref.id, [pos])
+							asset.ref.order_number -= 1
+							continue
+
+						# Remove the order if it isn't a move order to the correct location
+						if order.pos != desire.ref.pos:
+							print "First order was to wrong destination!"
+							connection.remove_orders(asset.ref.id, [pos])
+							asset.ref.order_number -= 1
+							continue
+
+						# Order is correct
+						print "Object already had correct move order."
+						results.append((True, 'Already existed...'))
+						break
+					else:
+						print "Issuing new order to %s move %s" % (asset, desire.ref.pos)
+						# We need to issue a move order instead.
+						results.append(connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos))
+						asset.ref.order_number += 1
+						break
 
 			# If it's a colonise order, we better colonise the thing
 			if task.task in (Task.COLONISE, Task.TAKEOVER):
-				print "Issuing orders to %s colonise %r" % (asset, desire.ref)
-				results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER, desire.ref.id))
+				while True:
+					pos = len(results)
+					if asset.ref.order_number > pos:
+						order = cache.orders[asset.ref.id][pos]
+
+						# Remove the order if it isn't a move order
+						if order.subtype != COLONISE_ORDER:
+							print "Object had wrong order type"
+							connection.remove_orders(asset.ref.id, [pos])
+							asset.ref.order_number -= 1
+							continue
+
+						# Order is correct
+						print "Object already had correct colonise order."
+						results.append((True, 'Already existed...'))
+						break
+					else:
+						print "Issuing orders to %s colonise %r" % (asset, desire.ref)
+						# We need to issue a move order instead.
+						results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, desire.ref.id))
+						asset.ref.order_number += 1
+						break
 
 		if task.task == Task.BUILD:
+			# Remove current orders...
+			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
+
 			result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
 			result = connection.get_orders(asset.ref.id, 0)
 			ships = {}
@@ -340,14 +382,37 @@ def run():
 					print (cache.designs[shipid].name, amount),
 			print
 
+import time
+def persisence():
+	connection, cache = connect()
+	run(connection, cache)
+
+	while True:
+		connection.pump()
+
+		pending = connection.buffered['frames-async']
+		while len(pending) > 0:
+			frame = pending.pop(0)
+			if isinstance(frame, objects.TimeRemaining):
+				if frame.time == 0:
+					continue
+				run(connection, cache)
+		time.sleep(1)	
+
+def main():
+	run(*connect())
+
 if __name__ == "__main__":
 	import sys
 	if len(sys.argv) > 1 and sys.argv[1] == '-p':
 		sys.argv.pop(1)
 		import hotshot
 		prof = hotshot.Profile("hotshot_stats")
-		prof.runcall(run)
+		prof.runcall(main)
 		prof.close()
+	if len(sys.argv) > 1 and sys.argv[1] == '-s':
+		sys.argv.pop(1)
+		main()
 	else:
-		run()
+		persisence()
 
