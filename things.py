@@ -135,33 +135,78 @@ class Task(Reference):
 	COLONISE = 'Colonise'
 	TAKEOVER = 'TakeOver'
 	BUILD 	 = 'Build   '
+	types = (DESTROY, COLONISE, TAKEOVER, BUILD)
 
 	def __init__(self, type, ref):
+		## Error checking....
+		if not (type in Task.types):
+			raise TypeError("Task's type was not valid!")
+
+		if not isinstance(ref, Reference):
+			raise TypeError("Task's reference must be a Reference object.")
+
+		## Actual method...
 		self.task = type
 		Reference.__init__(self, ref)
 
-		self.taken = (float('-inf'), None)
+		self.assigned = []
 
-	def taken_get(self):
-		return self.__taken
-	def taken_set(self, value):
-		if not isinstance(value, tuple) or len(value) != 2:
-			raise TypeError("Taken must be a tuple of length 2")
-		if not isinstance(value[0], float):
+	def long(self):
+		"""
+		Long returns how long this task will take to complete in turns.
+		"""
+		if len(self.assigned) > 0:
+			return self.assigned[-1][0]
+		return float('inf')
+
+	def assign(self, soon, asset, portion=100):
+		"""
+		Assign an asset to this task.
+
+		Soon is how soon this asset will complete it's "portion" of the task.
+
+		Adding a new asset which would take the number of assets working on
+		the task above 100% will cause the method to return a list of
+		assets which are no longer needed.
+		"""
+		## Error checking....
+		if not isinstance(soon, float):
 			try:
-				value = (float(value[0]), value[1])
+				soon = float(soon)
 			except:
-				raise TypeError("Taken's value[0] must be a float.")
-		if not isinstance(value[1], Reference) and not value[1] is None:
-			raise TypeError("Taken's value[1] must be a Reference object.")
-		if self == value[1]:
-			raise TypeError("Can not take oneself...")
-		self.__taken = value
-	taken = property(taken_get, taken_set)
+				raise TypeError("Assign's 'soon' argument must be a float.")
+
+		if not isinstance(portion, float):
+			try:
+				portion = float(portion)
+			except:
+				raise TypeError("Assign's 'portion' argument must be a float.")
+
+		if not isinstance(asset, Reference):
+			raise TypeError("Assign's asset must be a Reference object.")
+		if self == asset:
+			raise TypeError("Can not be assigned to oneself...")
+
+		## Actual method...
+		self.assigned.append((soon, asset, portion))
+		self.assigned.sort()
+
+		portion = 0
+		for i, (soon, asset, asset_portion) in enumerate(self.assigned):
+			portion += asset_portion
+
+			if portion >= 100:
+				break
+
+		i += 1
+
+		leftover = self.assigned[i:]
+		del self.assigned[i:]
+		return leftover
 
 	def __str__(self):
-		if self.taken[1] != None:
-			return "<Task %s - %s (assigned to %s at %s)>" % (self.task, self.ref, self.taken[1], self.taken[0])
+		if len(self.assigned) > 0:
+			return "<Task %s - %s (assigned to %r)>" % (self.task, self.ref, self.assigned)
 		else:
 			return "<Task %s - %s (unassigned)>" % (self.task, self.ref)
 	__repr__ = __str__

@@ -19,12 +19,24 @@ def dist(a, b):
 
 from things import *
 
+# FIXME: These should be defined in a "profile" somewhere as they are all server specific...
 PLANET_TYPE = 3
 FLEET_TYPE  = 4
 
-MOVE_ORDER = 1
-BUILD_ORDER = 2
+MOVE_ORDER     = 1
+BUILD_ORDER    = 2
 COLONISE_ORDER = 3
+
+FRIGATE_SPEED    = 200000000
+BATTLESHIP_SPEED = 300000000
+
+FRIGATE_BUILD    = 2
+BATTLESHIP_BUILD = 6
+
+FRIGATE_POWER    = 0.2
+BATTLESHIP_POWER = 1
+
+MARGIN = 10
 
 def tasks_cando(assets, tasks):
 	"""\
@@ -40,13 +52,33 @@ def tasks_cando(assets, tasks):
 				if not (BUILD_ORDER in asset.ref.order_types):
 					continue
 
-				# The closer we are to the target, the more we want to build this
-				if asset.ref.pos != task.ref.ref.ref.pos:
-					priority = 100/dist(asset, task.ref.ref)
-				else:
-					priority = 100
+				soon    = 0
+				portion = 100
 
-				map[asset].append((priority, task))
+				# How long is it going to take to "build" this task
+				# FIXME: There should be a good way to abstract this...
+				if task.ref.task == Task.COLONISE:
+					soon += FRIGATE_BUILD
+				if task.ref.task == Task.DESTROY:
+					soon += BATTLESHIP_BUILD
+				if task.ref.task == Task.TAKEOVER:
+					soon += BATTLESHIP_BUILD + FRIGATE_BUILD
+
+				# How long will it take for our built object to get to the target?
+				if asset.ref.pos != task.ref.ref.ref.pos:
+					# How soon we can finish this task is:
+					#   build + distance/speed
+					d = dist(asset, task.ref.ref) 
+					if task.ref.task in (Task.COLONISE, Task.TAKEOVER):
+						soon += d/FRIGATE_SPEED
+					if task.ref.task == Task.DESTROY:
+						soon += d/BATTLESHIP_SPEED
+				
+				# Work out the portion of this task we are actually going to build
+				if task.ref.task in (Task.DESTROY, Task.TAKEOVER):
+					portion = (task.ref.ref.power()+MARGIN)/BATTLESHIP_POWER
+
+				map[asset].append((soon, task, portion))
 				continue
 
 			# Check we can go where needed for this task
@@ -60,27 +92,26 @@ def tasks_cando(assets, tasks):
 					continue
 
 				if task.task == Task.COLONISE:
+					soon = 0
+
 					if asset.ref.pos != task.ref.ref.pos:
-						priority = 100/dist(asset, task.ref)
-					else:
-						priority = 100
-					map[asset].append((priority, task))
+						# Ships always move at the slowest speed...
+						soon += dist(asset, task.ref)/FRIGATE_SPEED
+
+					map[asset].append((soon, task, 100))
 
 			if task.task in (Task.DESTROY, Task.TAKEOVER):
 				# FIXME: This won't work when we merge the Threats
-				if task.ref.power() <= asset.power():
+				soon    = 0
+				portion = (task.ref.power()+MARGIN) / asset.power()
 
-					if asset.ref.pos != task.ref.ref.pos:
-						priority = task.ref.power()/dist(asset, task.ref)
-					else:
-						priority = 100
-					map[asset].append((priority, task))
+				if asset.ref.pos != task.ref.ref.pos:
+					soon = dist(asset, task.ref)/BATTLESHIP_SPEED
+
+				map[asset].append((soon, task, portion))
 
 	return map
 
-PRIORITY = 0
-TASK 	 = 1
-BY 		 = 1
 def tasks_assign(assets, map):
 	"""
 	Assigns assets to each task.
@@ -98,25 +129,23 @@ def tasks_assign(assets, map):
 		todo = copy.copy(map[asset])
 		todo.sort()
 
+		# The tasks we can complete soonest are first in the todo list now..
 		while len(todo) > 0:
-			priority, task = todo.pop(-1)
+			soon, task, portion = todo.pop(0)
 
-			# Is this task already assigned?
-			if task.taken[BY] != None:
-				# If we have a higher priority then the currently assigned asset ignore it
-				if task.taken[PRIORITY] >= priority:
-					continue
+			# Can we complete this task sooner?
+			if task.long() > soon:
+				unassigned = task.assign(soon, asset, portion)
+			
+				print "Assigned to", task, "will complete in %s%% in %s turns" % (portion, soon)
+				taken.add(task)
 
-				print task.taken[PRIORITY], priority
-				print "Going to take", task, "returning", task.taken[BY], "to retasked..."
+				# Reschedual assignment of assets which are now released...
+				print "Took over from %r" % unassigned
+				for soon, asset, portion in unassigned:
+					assets.insert(0, asset)
 
-				# Put the asset back in the queue as we will take this task
-				assets.insert(0, task.taken[BY])
-
-			task.taken = (priority, asset)
-			print "Assigned to", priority, task
-			taken.add(task)
-			break
+				break
 	
 		# Nothing for me to do
 		if len(todo) == 0:
@@ -225,7 +254,7 @@ def run(connection, cache):
 		tasks.remove(task)
 
 		# This task is already satisified
-		if task.taken[BY] != None:
+		if task.long() < float('inf'):
 			continue
 
 		if task.task != Task.BUILD:
@@ -250,117 +279,111 @@ def run(connection, cache):
 	print "------------------------------------------------------------------"
 	used_assets = []
 	for task in taken:
-		asset = task.taken[BY]
-		used_assets.append(asset)
-
-		# Remove any outstanding orders
-#		if asset.ref.order_number > 0:
-#			continue
-#			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number)) 
-
-		results = []
-
 		print task
+		for soon, asset, portion in task.assigned:
+			used_assets.append(asset)
 
-		# Issue the new order
-		if task.task in (Task.COLONISE, Task.DESTROY, Task.TAKEOVER):
-			desire = task.ref
+			results = []
 
-			# Are we at the same location?
-			if asset.ref.pos != desire.ref.pos:
-				while True:
-					pos = len(results)
-					if asset.ref.order_number > pos:
-						order = cache.orders[asset.ref.id][pos]
+			# Issue the new order
+			if task.task in (Task.COLONISE, Task.DESTROY, Task.TAKEOVER):
+				desire = task.ref
 
-						# Remove the order if it isn't a move order
-						if order.subtype != MOVE_ORDER:
-							print "First order wasn't a move order!"
-							connection.remove_orders(asset.ref.id, [pos])
-							asset.ref.order_number -= 1
-							continue
+				# Are we at the same location?
+				if asset.ref.pos != desire.ref.pos:
+					while True:
+						pos = len(results)
+						if asset.ref.order_number > pos:
+							order = cache.orders[asset.ref.id][pos]
 
-						# Remove the order if it isn't a move order to the correct location
-						if order.pos != desire.ref.pos:
-							print "First order was to wrong destination!"
-							connection.remove_orders(asset.ref.id, [pos])
-							asset.ref.order_number -= 1
-							continue
+							# Remove the order if it isn't a move order
+							if order.subtype != MOVE_ORDER:
+								print "First order wasn't a move order!"
+								connection.remove_orders(asset.ref.id, [pos])
+								asset.ref.order_number -= 1
+								continue
 
-						# Order is correct
-						print "Object already had correct move order."
-						results.append((True, 'Already existed...'))
-						break
-					else:
-						print "Issuing new order to %s move %s" % (asset, desire.ref.pos)
-						# We need to issue a move order instead.
-						results.append(connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos))
-						asset.ref.order_number += 1
-						break
+							# Remove the order if it isn't a move order to the correct location
+							if order.pos != desire.ref.pos:
+								print "First order was to wrong destination!"
+								connection.remove_orders(asset.ref.id, [pos])
+								asset.ref.order_number -= 1
+								continue
 
-			# If it's a colonise order, we better colonise the thing
-			if task.task in (Task.COLONISE, Task.TAKEOVER):
-				while True:
-					pos = len(results)
-					if asset.ref.order_number > pos:
-						order = cache.orders[asset.ref.id][pos]
+							# Order is correct
+							print "Object already had correct move order."
+							results.append((True, 'Already existed...'))
+							break
+						else:
+							print "Issuing new order to %s move %s" % (asset, desire.ref.pos)
+							# We need to issue a move order instead.
+							results.append(connection.insert_order(asset.ref.id, -1, MOVE_ORDER, desire.ref.pos))
+							asset.ref.order_number += 1
+							break
 
-						# Remove the order if it isn't a move order
-						if order.subtype != COLONISE_ORDER:
-							print "Object had wrong order type"
-							connection.remove_orders(asset.ref.id, [pos])
-							asset.ref.order_number -= 1
-							continue
+				# If it's a colonise order, we better colonise the thing
+				if task.task in (Task.COLONISE, Task.TAKEOVER):
+					while True:
+						pos = len(results)
+						if asset.ref.order_number > pos:
+							order = cache.orders[asset.ref.id][pos]
 
-						# Order is correct
-						print "Object already had correct colonise order."
-						results.append((True, 'Already existed...'))
-						break
-					else:
-						print "Issuing orders to %s colonise %r" % (asset, desire.ref)
-						# We need to issue a move order instead.
-						results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, desire.ref.id))
-						asset.ref.order_number += 1
-						break
+							# Remove the order if it isn't a move order
+							if order.subtype != COLONISE_ORDER:
+								print "Object had wrong order type"
+								connection.remove_orders(asset.ref.id, [pos])
+								asset.ref.order_number -= 1
+								continue
 
-		if task.task == Task.BUILD:
-			# Remove current orders...
-			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
+							# Order is correct
+							print "Object already had correct colonise order."
+							results.append((True, 'Already existed...'))
+							break
+						else:
+							print "Issuing orders to %s colonise %r" % (asset, desire.ref)
+							# We need to issue a move order instead.
+							results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, desire.ref.id))
+							asset.ref.order_number += 1
+							break
 
-			result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
-			result = connection.get_orders(asset.ref.id, 0)
-			ships = {}
-			for id, name, max in result[0].ships[0]:
-				ships[name] = id
-			connection.remove_orders(asset.ref.id, [0]) 
+			if task.task == Task.BUILD:
+				# Remove current orders...
+				connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
 
-			if task.ref.task == Task.COLONISE:
-				# If we are referencing a colonise, better build a frigate
-				print "Issuing orders to %s to build a frigate" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1)], 0, "A robot army!"))
-			if task.ref.task == Task.DESTROY:
-				# Better build a battleship
-				print "Issuing orders to %s to build a battleship" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Battleship'],1)], 0, "A robot army!"))
-			if task.ref.task == Task.TAKEOVER:
-				# Better build a battleship and a frigate
-				print "Issuing orders to %s to build a battleship and frigate" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
-			
-		if len(results) == 0:
+				result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
+				result = connection.get_orders(asset.ref.id, 0)
+				ships = {}
+				for id, name, max in result[0].ships[0]:
+					ships[name] = id
+				connection.remove_orders(asset.ref.id, [0]) 
+
+				if task.ref.task == Task.COLONISE:
+					# If we are referencing a colonise, better build a frigate
+					print "Issuing orders to %s to build a frigate" % (asset,)
+					results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1)], 0, "A robot army!"))
+				if task.ref.task == Task.DESTROY:
+					# Better build a battleship
+					print "Issuing orders to %s to build a battleship" % (asset,)
+					results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Battleship'],1)], 0, "A robot army!"))
+				if task.ref.task == Task.TAKEOVER:
+					# Better build a battleship and a frigate
+					print "Issuing orders to %s to build a battleship and frigate" % (asset,)
+					results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
+				
+			if len(results) == 0:
+				print
+				continue
+
+			for i, result in enumerate(results):
+				if not result[0]:
+					raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
+
+				# Order should complete in
+				result = connection.get_orders(asset.ref.id, 0)
+				if not result[0]:
+					raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
+				print "Order %i will complete in %s turns" % (i, result[0].turns)
 			print
-			continue
-
-		for i, result in enumerate(results):
-			if not result[0]:
-				raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
-
-			# Order should complete in
-			result = connection.get_orders(asset.ref.id, 0)
-			if not result[0]:
-				raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
-			print "Order %i will complete in %s turns" % (i, result[0].turns)
-		print
 
 	print
 	print "Checks..."
