@@ -16,7 +16,7 @@ from things import *
 def distancemap(asset, tasks):
 	distances = {}
 	for task in tasks:
-		distances[dist(asset, task.ref)] = task
+		distances[dist(asset.ref.pos, task.ref.pos[0])] = task
 	return distances
 
 def task_next(asset, distances):
@@ -43,10 +43,10 @@ def task_next(asset, distances):
 				soon += BATTLESHIP_BUILD + FRIGATE_BUILD
 
 			# How long will it take for our built object to get to the target?
-			if asset.ref.pos != task.ref.ref.pos:
+			if asset.ref.pos != task.ref.pos[0]:
 				# How soon we can finish this task is:
 				#   build + distance/speed
-				d = dist(asset, task.ref) 
+				d = dist(asset.ref.pos, task.ref.pos[0]) 
 				if task.type in (Task.COLONISE, Task.TAKEOVER):
 					soon += d/FRIGATE_SPEED
 				if task.type == Task.DESTROY:
@@ -54,14 +54,12 @@ def task_next(asset, distances):
 
 			# Work out the portion of this task we are actually going to build
 			if task.type in (Task.DESTROY, Task.TAKEOVER):
-				print BATTLESHIP_POWER, task.ref.power()
-				print (BATTLESHIP_POWER/(task.ref.power()+MARGIN))*100
-				portion = (BATTLESHIP_POWER/(task.ref.power()+MARGIN))*100
+				portion = (BATTLESHIP_POWER/(task.power[0]()+MARGIN))*100
 
 			return soon, task, portion, False
 
 		# Check we can go where needed for this task
-		if hasattr(task.ref.ref, "pos") and asset.ref.pos != task.ref.ref.pos:
+		if asset.ref.pos != task.ref.pos[0]:
 			if not MOVE_ORDER in asset.ref.order_types:
 				continue
 
@@ -72,9 +70,9 @@ def task_next(asset, distances):
 
 			if task.type == Task.COLONISE:
 				soon = 0
-				if asset.ref.pos != task.ref.ref.pos:
+				if asset.ref.pos != task.ref.pos[0]:
 					# Ships always move at the slowest speed...
-					soon = dist(asset, task.ref)/FRIGATE_SPEED
+					soon = dist(asset.ref.pos, task.ref.pos[0])/FRIGATE_SPEED
 
 				return soon, task, 100, True
 
@@ -87,8 +85,8 @@ def task_next(asset, distances):
 			soon    = 0
 			portion = (asset.power()/(task.ref.power()+MARGIN))*100
 
-			if asset.ref.pos != task.ref.ref.pos:
-				soon = dist(asset, task.ref)/BATTLESHIP_SPEED
+			if asset.ref.pos != task.ref.pos[0]:
+				soon = dist(asset.ref.pos, task.ref.pos[0])/BATTLESHIP_SPEED
 
 			return soon, task, portion, True
 
@@ -199,14 +197,20 @@ def run(connection, cache):
 	for object in cache.objects.values():
 		if hasattr(object, 'owner'):
 			if object.owner in (0, -1):
-				neutrals.append(Neutral(object))
+				neutrals.append(Neutral([object]))
 			elif object.owner == pid:
-				assets.append(Asset(object))
+				assets.append(Asset([object]))
 			else:
-				t = Threat(object)
-				print repr(object), t.power()
-				if t.power() > 0:
-					threats.append(t)
+				# Check this object isn't at the same location as another object...
+				combined = False
+				for threat in threats:
+					if object.pos == threat.pos[0]:
+						threat.ref.append(object)
+						combined = True
+						break
+
+				if not combined:
+					threats.append(Threat([object]))
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
@@ -216,18 +220,22 @@ def run(connection, cache):
 	tasks = []
 	
 	# For each threat, we need to eliminate it or take it over
+	print threats
 	for threat in threats:
-		print threat, threat.power()
 		if PLANET_TYPE in threat._subtype:
 			tasks.append(Task.TAKEOVER(threat))
 		else:
 			tasks.append(Task.DESTROY(threat))
+
+	print tasks
 
 	# For each neutral we want to colonise the planets
 	for neutral in neutrals:
 		if not neutral.ref._subtype is PLANET_TYPE:
 			continue
 		tasks.append(Task.COLONISE(neutral))
+
+
 
 	print "\nStep 1. Assigning tasks to assets.."
 	print "------------------------------------------------------------------"
@@ -264,19 +272,28 @@ def run(connection, cache):
 import time
 def persisence():
 	connection, cache = connect()
-	run(connection, cache)
 
 	while True:
 		connection.pump()
 
 		pending = connection.buffered['frames-async']
-		while len(pending) > 0:
-			frame = pending.pop(0)
-			if isinstance(frame, objects.TimeRemaining):
-				if frame.time == 0:
-					continue
-				run(connection, cache)
-		time.sleep(1)	
+		if len(pending) > 0:
+			while len(pending) > 0:
+				frame = pending.pop(0)
+				if isinstance(frame, objects.TimeRemaining):
+					if frame.time == 0:
+						continue
+					try: 
+						run(connection, cache)
+					except Exception, e:
+						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+						import traceback
+						traceback.print_exc()
+						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		else:	
+			time.sleep(0.1)	
 
 def main():
 	run(*connect())

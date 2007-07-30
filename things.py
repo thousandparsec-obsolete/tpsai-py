@@ -12,84 +12,82 @@ connection = None
 
 import math
 def dist(a, b):
-	a = a.ref.pos
-	b = b.ref.pos
-
 	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
+
+class LayeredIn(list):
+	def __contains__(self, value):
+		if list.__contains__(self, value):
+			return True
+		for l in self:
+			if isinstance(l, (tuple, list)) and value in l:
+				return True
+		return False
 
 class Reference(object):
 	"""\
 	Something which refers to something else.
 	"""
-	def __init__(self, ref):
-		self.ref = ref
+	def __init__(self, refs):
+		if not isinstance(refs, list):
+			raise TypeError('Reference must referance a list!')
+
+		self.refs = refs
 
 	def __str__(self):
-		return "<%s ref=%r>" % (self.__class__.__name__, self.ref)
+		return "<%s refs=%r>" % (self.__class__.__name__, self.refs)
 	__repr__ = __str__
 
 	def __getattr__(self, value):
-		if value == 'ref':
+		"""\
+		This proxy class lets you use the following idiom,
+
+		Say you create a reference which points to a list of objects,
+		a = Reference([obj1, obj2])
+
+		If both either obj1 or obj2 has an attribue "subtype" with value COLONISE,
+		you can do:
+
+		>>> class obj:
+		>>> 	pass
+		>>>
+		>>> obj1 = obj()
+		>>> obj2 = obj()
+		>>> obj1.subtype = COLONISE
+		>>> obj1.orders = [COLONISE, 19]
+		>>> obj1.pos    = [10, 10, 10]
+		>>> obj2.subtype = OTHER
+		>>> obj2.orders = [78, OTHER]
+		>>> obj2.pos    = [10, 10, 10]
+		>>> r = Reference([obj1, obj2])
+
+		>>> COLONISE in r.subtype
+		True
+
+		>>> 22 in r.subtype
+		False
+
+		>>> 78 in r.other
+		True
+
+		>>> 100 in r.other
+		False
+
+		>>> print obj2.pos
+		[10, 10, 10]
+		"""
+		if value == 'refs':
 			raise SyntaxError('This should not happen!')
 
-		class Proxy(object):
-			"""\
-			This proxy class lets you use the following idiom,
+		r = LayeredIn()
+		for ref in self.refs:
+			if not hasattr(ref, value):
+				raise TypeError("One of the references (%s) does not have that attribute!")
 
-			Say you create a reference which points to a list of objects,
-			a = Reference([obj1, obj2])
+			v = getattr(ref, value)
+			if not v in r:
+				r.append(v)
 
-			If both either obj1 or obj2 has an attribue "subtype" with value COLONISE,
-			you can do:
-
-			>>> class obj:
-			>>> 	pass
-			>>>
-			>>> obj1 = obj()
-			>>> obj2 = obj()
-			>>> obj1.subtype = COLONISE
-			>>> obj1.orders = [COLONISE, 19]
-			>>> obj2.subtype = OTHER
-			>>> obj2.orders = [78, OTHER]
-			>>> r = Reference([obj1, obj2])
-
-			>>> COLONISE in r.subtype
-			True
-	
-			>>> 22 in r.subtype
-			False
-
-			>>> 78 in r.other
-			True
-
-			>>> 100 in r.other
-			False
-			"""
-			def __init__(self, base, name):
-				self.base = base
-				self.name = name
-
-			def __contains__(self, value):
-				base = self.base
-				name = self.name
-				if not isinstance(base.ref, (list, tuple)):
-					attrib = getattr(base.ref, name)
-					if isinstance(attrib, (list, tuple)):
-						return value in attrib
-					else:
-						return value == attrib
-				else:
-					# Check all the objects that this thing references
-					for x in base.ref:
-						attrib = getattr(x, name)
-						if isinstance(attrib, (list, tuple)):
-							if value in attrib:
-								return True
-						else:
-							if value == attrib:
-								return True
-					return False
-		return Proxy(self, value)
+		return r
 
 # FIXME: These should be defined in a "profile" somewhere as they are all server specific...
 PLANET_TYPE = 3
@@ -125,8 +123,7 @@ class Asset(Reference):
 
 		power = 0
 
-		assets = [[self.ref], self.ref][isinstance(self.ref, list)]
-		for asset in assets:
+		for asset in self.refs:
 			if asset._subtype == FLEET_TYPE:
 				for shipid, num in asset.ships:
 					# Scouts do nothing!
@@ -146,6 +143,10 @@ class Asset(Reference):
 					print "WARNING! Unknown ship type!"
 
 		return power
+
+	def ref(self):
+		return self.refs[0]
+	ref = property(ref)
 
 class Threat(Reference):
 	"""\
@@ -172,8 +173,7 @@ class Threat(Reference):
 		"""
 		power = 0
 
-		threats = [[self.ref], self.ref][isinstance(self.ref, list)]
-		for threat in threats:
+		for threat in self.refs:
 			if threat._subtype == PLANET_TYPE:
 				# Check if this is a homeworld
 				if False:
@@ -201,7 +201,9 @@ class Neutral(Asset, Threat):
 	"""\
 	A Neutral object is anything which could possibly be an asset or a threat to the computer.
 	"""
-	pass
+	def ref(self):
+		return self.refs[0]
+	ref = property(ref)
 
 class Task(Reference):
 	"""\
@@ -215,8 +217,12 @@ class Task(Reference):
 			raise TypeError("Task's reference must be a Reference object.")
 
 		## Actual method...
-		Reference.__init__(self, ref)
+		Reference.__init__(self, [ref])
 		self.assigned = []
+
+	def ref(self):
+		return self.refs[0]
+	ref = property(ref)
 
 	def type(self):
 		return self.__class__
@@ -318,18 +324,19 @@ class Task(Reference):
 		used_assets = []
 
 		# First job is to collect all the assets together
-		flagship = self.assigned[0][1]
 		if len(self.assigned) > 1:
+			soon, flagship, portion, flagdirect = self.assigned[0]
 			used_assets.append(flagship)
 
-			for soon, asset, portion, direct in self.assigned[1:]:
+			for soon, asset, portion, direct in self.assigned[flagdirect:]:
 				used_assets.append(asset)
 
 				results = []
 
 				if direct:
-					OrderAdd_Move(asset,  flagship.ref.pos, results)
-					OrderAdd_Merge(asset, flagship,         results)
+					OrderAdd_Move(asset,  flagship.pos[0], results)
+					if flagdirect:
+						OrderAdd_Merge(asset, flagship,        results)
 				else:
 					OrderAdd_Build(asset, self, results)
 
@@ -365,7 +372,7 @@ class TaskDestroy(Task):
 				# Only actually go after the object if we can complete the task!
 				if self.ready():
 					# FIXME: Should actually try an intercept the target!
-					OrderAdd_Move(flagship, self.ref.ref.pos, results)
+					OrderAdd_Move(flagship, self.ref.pos[0], results)
 			else:
 				OrderAdd_Build(flagship, self, results)
 			
@@ -389,7 +396,7 @@ class TaskColonise(Task):
 
 			results = []
 			if direct:
-				OrderAdd_Move(flagship, self.ref.ref.pos, results)
+				OrderAdd_Move(flagship, self.ref.pos[0], results)
 				OrderAdd_Colonise(flagship, self.ref, results)
 			else:
 				OrderAdd_Build(flagship, self, results)
@@ -416,7 +423,7 @@ class TaskTakeOver(TaskColonise):
 			if direct:
 				# Only actually go after the object if we can complete the task!
 				if self.ready():
-					OrderAdd_Move(flagship, self.ref.ref.pos, results)
+					OrderAdd_Move(flagship, self.ref.pos[0], results)
 					OrderAdd_Colonise(flagship, self.ref, results)
 			else:
 				OrderAdd_Build(flagship, self, results)
@@ -439,13 +446,16 @@ def OrderPrint(asset, results):
 		print
 		return
 
+	if asset.ref.order_number != len(results):
+		print "WARNING: Somehow we have more orders on the object then we added..."
+
 	for i, result in enumerate(results):
 		#print result
 		if not result[0]:
 			raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
 
 		# Order should complete in
-		result = connection.get_orders(asset.ref.id, i)
+		result = connection.get_orders(asset.id[0], i)
 		if not result[0]:
 			raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
 		print "Order %i will complete in %.2f turns" % (i, result[0].turns)
@@ -457,7 +467,7 @@ def OrderAdd_Move(asset, pos, results):
 
 	It won't add any orders if the asset is at the given position.
 	"""
-	if asset.ref.pos == pos:
+	if asset.pos[0] == pos:
 		return
 
 	# FIXME: Check that asset can move!
@@ -502,7 +512,18 @@ def OrderAdd_Colonise(asset, target, results):
 	while True:
 		onum = len(results)
 		if asset.ref.order_number > onum:
-			order = cache.orders[asset.ref.id][onum]
+			try:
+				order = cache.orders[asset.ref.id][onum]
+			except IndexError, e:
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				import traceback
+				traceback.print_exc()
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+
+				asset.ref.order_number -= 1
+				continue
 
 			# Remove the order if it isn't a move order
 			if order.subtype != COLONISE_ORDER:
@@ -517,9 +538,9 @@ def OrderAdd_Colonise(asset, target, results):
 			results.append((True, 'Already existed...'))
 			break
 		else:
-			print "Colonise order - Issuing orders to %s colonise %r" % (asset, target.ref)
+			print "Colonise order - Issuing orders to %s colonise %r" % (asset, target.refs)
 			# We need to issue a move order instead.
-			results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, target.ref.id))
+			results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, target.refs.id))
 			asset.ref.order_number += 1
 			break
 
@@ -539,7 +560,7 @@ def OrderAdd_Merge(asset, target, results):
 				asset.ref.order_number -= 1
 				continue
 
-			#if order.target != target.ref.id:
+			#if order.target != target.refs.id:
 			#	print "Merge order - Current order didn't target correct object!"
 			#	# FIXME: Should check the return result of this command
 			#	connection.remove_orders(asset.ref.id, [onum])
@@ -551,7 +572,7 @@ def OrderAdd_Merge(asset, target, results):
 			results.append((True, 'Already existed...'))
 			break
 		else:
-			print "Merge order - Issuing orders to %s merge with %r" % (asset, target.ref)
+			print "Merge order - Issuing orders to %s merge with %r" % (asset, target.refs)
 			# We need to issue a move order instead.
 			results.append(connection.insert_order(asset.ref.id, -1, MERGE_ORDER))
 			asset.ref.order_number += 1

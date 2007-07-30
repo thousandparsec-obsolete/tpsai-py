@@ -7,7 +7,6 @@ How this AI bot works.
 
 Step 1 - Classify each object into threat, neutral, asset
 Step 2 - Work out the tasks needed to deal with threats and assets
-
 Step 3 - Work out which assets can be do each task
 
 Step 4 - Assign assets to tasks so that the time to complete each task is
