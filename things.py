@@ -11,6 +11,11 @@ cache      = None
 connection = None
 
 import math
+def dist(a, b):
+	a = a.ref.pos
+	b = b.ref.pos
+
+	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
 class Reference(object):
 	"""\
@@ -102,9 +107,9 @@ FRIGATE_BUILD    = 2
 BATTLESHIP_BUILD = 6
 
 FRIGATE_POWER    = 0.2
-BATTLESHIP_POWER = 1
+BATTLESHIP_POWER = 1.0
 
-MARGIN = 10
+MARGIN = 5
 
 class Asset(Reference):
 	"""\
@@ -231,6 +236,13 @@ class Task(Reference):
 			portion += asset_portion
 		return portion
 
+	def ready(self):
+		for soon, asset, asset_portion, direct in self.assigned:
+			if not direct:
+				return False
+		return True
+		
+
 	def assign(self, soon, asset, portion=100, direct=True):
 		"""
 		Assign an asset to this task.
@@ -278,35 +290,25 @@ class Task(Reference):
 		return leftover
 
 	def __str__(self, short=False):
-		t = ""
-		if isinstance(self.ref, Task):
-			t += repr(object.__repr__(self.ref))
-		else:
-			t += str(self.ref)
-
 		if len(self.assigned) > 0:
-			s = ""
-			if short:
-				s += "[...]"
+			s = '['
+			if len(self.assigned) < 2:
+				for soon, asset, portion, direct in self.assigned:
+					if direct:
+						s += "(%.2f, %s, %.1f), " % (soon, asset, portion)
+					else:
+						s += "{%.2f, %s, %.1f}, " % (soon, asset, portion)
 			else:
-				s += "["
-				if len(self.assigned) < 2:
-					for soon, asset, portion, direct in self.assigned:
-						if isinstance(asset, Task):
-							s += "(%.2f, %s, %.1f), " % (soon, asset.__str__(short=True), portion)
-						else:
-							s += "(%.2f, %s, %.1f), " % (soon, asset, portion)
-				else:
-					for soon, asset, portion, direct in self.assigned:
-						if isinstance(asset, Task):
-							s += "\n\t(%.2f, %s, %.1f), " % (soon, asset.__str__(short=True), portion)
-						else:
-							s += "\n\t(%.2f, %s, %.1f), " % (soon, asset, portion)
-				s = s[:-2] +"]"
+				for soon, asset, portion, direct in self.assigned:
+					if direct:
+						s += "\n\t(%.2f, %s, %.1f), " % (soon, asset, portion)
+					else:
+						s += "\n\t{%.2f, %s, %.1f}, " % (soon, asset, portion)
+			s = s[:-2] +"]"
 
-			return "<Task %s - %s ((%.0f%%) assigned to %s)>" % (self.name, t, self.portion(), s)
+			return "<Task %s - %s ((%.0f%%) assigned to %s)>" % (self.name, self.ref, self.portion(), s)
 		else:
-			return "<Task %s - %s (unassigned)>" % (self.name, t)
+			return "<Task %s - %s (unassigned)>" % (self.name, self.ref)
 	__repr__ = __str__
 
 	def issue(self):
@@ -361,7 +363,7 @@ class TaskDestroy(Task):
 			results = []
 			if direct:
 				# Only actually go after the object if we can complete the task!
-				if self.portion() >= 100:
+				if self.ready():
 					# FIXME: Should actually try an intercept the target!
 					OrderAdd_Move(flagship, self.ref.ref.pos, results)
 			else:
@@ -413,7 +415,7 @@ class TaskTakeOver(TaskColonise):
 			results = []
 			if direct:
 				# Only actually go after the object if we can complete the task!
-				if self.portion() >= 100:
+				if self.ready():
 					OrderAdd_Move(flagship, self.ref.ref.pos, results)
 					OrderAdd_Colonise(flagship, self.ref, results)
 			else:

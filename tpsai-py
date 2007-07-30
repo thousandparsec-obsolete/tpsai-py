@@ -8,121 +8,117 @@ from tp.client.cache import Cache
 version = (0, 0, 1)
 
 import copy
-import math
 import pprint
-
-def dist(a, b):
-	a = a.ref.pos
-	b = b.ref.pos
-
-	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
 import things
 from things import *
 
-def tasks_cando(assets, tasks):
+def distancemap(asset, tasks):
+	distances = {}
+	for task in tasks:
+		distances[dist(asset, task.ref)] = task
+	return distances
+
+def task_next(asset, distances):
 	"""\
-	Figures out which tasks each asset can do.
+	Sort the tasks by the distance between this asset and them.
 	"""
-	map = {}
-	for asset in assets:
-		map[asset] = []
+	while len(distances) > 0:
+		key = min(distances.keys())
+		task = distances[key]
+		del distances[key]
 
-		# Figure out which tasks we can do
-		for task in tasks:
+		# Can we satisfy this task by building something...
+		if BUILD_ORDER in asset.ref.order_types:
+			soon    = 0
+			portion = 100
 
-			# Can we satisfy this task by building something...
-			if BUILD_ORDER in asset.ref.order_types:
-				soon    = 0
-				portion = 100
+			# How long is it going to take to "build" this task
+			# FIXME: There should be a good way to abstract this...
+			if task.type == Task.COLONISE:
+				soon += FRIGATE_BUILD
+			if task.type == Task.DESTROY:
+				soon += BATTLESHIP_BUILD
+			if task.type == Task.TAKEOVER:
+				soon += BATTLESHIP_BUILD + FRIGATE_BUILD
 
-				# How long is it going to take to "build" this task
-				# FIXME: There should be a good way to abstract this...
-				if task.type == Task.COLONISE:
-					soon += FRIGATE_BUILD
+			# How long will it take for our built object to get to the target?
+			if asset.ref.pos != task.ref.ref.pos:
+				# How soon we can finish this task is:
+				#   build + distance/speed
+				d = dist(asset, task.ref) 
+				if task.type in (Task.COLONISE, Task.TAKEOVER):
+					soon += d/FRIGATE_SPEED
 				if task.type == Task.DESTROY:
-					soon += BATTLESHIP_BUILD
-				if task.type == Task.TAKEOVER:
-					soon += BATTLESHIP_BUILD + FRIGATE_BUILD
+					soon += d/BATTLESHIP_SPEED
 
-				# How long will it take for our built object to get to the target?
-				if asset.ref.pos != task.ref.ref.pos:
-					# How soon we can finish this task is:
-					#   build + distance/speed
-					d = dist(asset, task.ref) 
-					if task.type in (Task.COLONISE, Task.TAKEOVER):
-						soon += d/FRIGATE_SPEED
-					if task.type == Task.DESTROY:
-						soon += d/BATTLESHIP_SPEED
+			# Work out the portion of this task we are actually going to build
+			if task.type in (Task.DESTROY, Task.TAKEOVER):
+				print BATTLESHIP_POWER, task.ref.power()
+				print (BATTLESHIP_POWER/(task.ref.power()+MARGIN))*100
+				portion = (BATTLESHIP_POWER/(task.ref.power()+MARGIN))*100
 
-				# Work out the portion of this task we are actually going to build
-				if task.ref.task in (Task.DESTROY, Task.TAKEOVER):
-					portion = (task.ref.ref.power()+MARGIN)/BATTLESHIP_POWER
+			return soon, task, portion, False
 
-				map[asset].append((soon, task, portion, False))
+		# Check we can go where needed for this task
+		if hasattr(task.ref.ref, "pos") and asset.ref.pos != task.ref.ref.pos:
+			if not MOVE_ORDER in asset.ref.order_types:
 				continue
 
-			# Check we can go where needed for this task
-			if hasattr(task.ref.ref, "pos") and asset.ref.pos != task.ref.ref.pos:
-				if not MOVE_ORDER in asset.ref.order_types:
-					continue
+		if task.type in (Task.COLONISE, Task.TAKEOVER):
+			# Only assets which have the colonise order are useful for these tasks
+			if not (COLONISE_ORDER in asset.ref.order_types):
+				continue
 
-			if task.type in (Task.COLONISE, Task.TAKEOVER):
-				# Only assets which have the colonise order are useful for these tasks
-				if not (COLONISE_ORDER in asset.ref.order_types):
-					continue
-
-				if task.type == Task.COLONISE:
-					soon = 0
-
-					if asset.ref.pos != task.ref.ref.pos:
-						# Ships always move at the slowest speed...
-						soon += dist(asset, task.ref)/FRIGATE_SPEED
-
-					map[asset].append((soon, task, 100, True))
-
-			if task.type in (Task.DESTROY, Task.TAKEOVER):
-				# If this asset has no power, do nothing...
-				if asset.power() == 0:
-					continue
-
-				# FIXME: This won't work when we merge the Threats
-				soon    = 0
-				portion = (asset.power()/(task.ref.power()+MARGIN))*100
-
+			if task.type == Task.COLONISE:
+				soon = 0
 				if asset.ref.pos != task.ref.ref.pos:
-					soon = dist(asset, task.ref)/BATTLESHIP_SPEED
+					# Ships always move at the slowest speed...
+					soon = dist(asset, task.ref)/FRIGATE_SPEED
 
-				map[asset].append((soon, task, portion, True))
+				return soon, task, 100, True
 
-	return map
+		if task.type in (Task.DESTROY, Task.TAKEOVER):
+			# If this asset has no power, do nothing...
+			if asset.power() == 0:
+				continue
 
-def tasks_assign(assets, map):
+			# FIXME: This won't work when we merge the Threats
+			soon    = 0
+			portion = (asset.power()/(task.ref.power()+MARGIN))*100
+
+			if asset.ref.pos != task.ref.ref.pos:
+				soon = dist(asset, task.ref)/BATTLESHIP_SPEED
+
+			return soon, task, portion, True
+
+def tasks_assign(assets, tasks):
 	"""
 	Assigns assets to each task.
 	"""
+	distances = {}
+	for asset in assets:
+		distances[asset] = distancemap(asset, tasks)
 	assets = copy.copy(assets)
 
 	taken = set()
 	while len(assets) > 0:
 		asset = assets.pop(0)
-
 		print
 		print
 		print "Assigning task for ", asset
 
-		todo = copy.copy(map[asset])
-		todo.sort()
+		possible = None
+		while True:
+			possible = task_next(asset, distances[asset])
+			if possible is None:
+				break
 
-		# The tasks we can complete soonest are first in the todo list now..
-		while len(todo) > 0:
-			soon, task, portion, direct = todo.pop(0)
+			soon, task, portion, direct = possible
+			print soon, task.long()
 
 			# Can we complete this task sooner?
 			# Or does this task need help to be completed...
-			print task
-			print soon, task.long()
-
 			if task.long() > soon or task.portion() < 100:
 				unassigned = task.assign(soon, asset, portion, direct)
 			
@@ -137,7 +133,7 @@ def tasks_assign(assets, map):
 				break
 	
 		# Nothing for me to do
-		if len(todo) == 0:
+		if possible is None:
 			print "Nothing.."
 			continue
 
@@ -207,7 +203,10 @@ def run(connection, cache):
 			elif object.owner == pid:
 				assets.append(Asset(object))
 			else:
-				threats.append(Threat(object))
+				t = Threat(object)
+				print repr(object), t.power()
+				if t.power() > 0:
+					threats.append(t)
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
@@ -230,16 +229,12 @@ def run(connection, cache):
 			continue
 		tasks.append(Task.COLONISE(neutral))
 
-	print "\nStep 1. Finding which assets can do the tasks.."
+	print "\nStep 1. Assigning tasks to assets.."
 	print "------------------------------------------------------------------"
-	map = tasks_cando(assets, tasks)
-
-	print "\nStep 2. Assigning tasks to assets.."
-	print "------------------------------------------------------------------"
-	taken = tasks_assign(assets, map)
+	taken = tasks_assign(assets, tasks)
 
 	# Set all the orders so the tasks are performed
-	print "\nStep 3. Issuing orders to do tasks.."
+	print "\nStep 2. Issuing orders to do tasks.."
 	print "------------------------------------------------------------------"
 	used_assets = []
 	for task in taken:
@@ -285,6 +280,12 @@ def persisence():
 
 def main():
 	run(*connect())
+
+def main_try():
+	try:
+		run(*connect())
+	except Exception, e:
+		print e
 
 if __name__ == "__main__":
 	import sys
