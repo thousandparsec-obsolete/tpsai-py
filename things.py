@@ -211,15 +211,11 @@ class Task(Reference):
 
 		## Actual method...
 		Reference.__init__(self, ref)
-
 		self.assigned = []
-		if isinstance(ref, Task):
-			if ref.long() < float('inf'):
-				self.assigned.append((ref.long(), ref, ref.portion()))
 
-	def task(self):
+	def type(self):
 		return self.__class__
-	task = property(task)
+	type = property(type)
 
 	def long(self):
 		"""
@@ -231,11 +227,11 @@ class Task(Reference):
 
 	def portion(self):
 		portion = 0
-		for soon, asset, asset_portion in self.assigned:
+		for soon, asset, asset_portion, direct in self.assigned:
 			portion += asset_portion
 		return portion
 
-	def assign(self, soon, asset, portion=100):
+	def assign(self, soon, asset, portion=100, direct=True):
 		"""
 		Assign an asset to this task.
 
@@ -264,14 +260,12 @@ class Task(Reference):
 			raise TypeError("Can not be assigned to oneself...")
 
 		## Actual method...
-		self.assigned.append((soon, asset, portion))
+		self.assigned.append((soon, asset, portion, direct))
 		self.assigned.sort()
 
 		portion = 0
 
-		print self.assigned
-
-		for i, (soon, asset, asset_portion) in enumerate(self.assigned):
+		for i, (soon, asset, asset_portion, direct) in enumerate(self.assigned):
 			portion += asset_portion
 
 			if portion >= 100:
@@ -296,14 +290,14 @@ class Task(Reference):
 				s += "[...]"
 			else:
 				s += "["
-				if False and len(self.assigned) < 4:
-					for soon, asset, portion in self.assigned:
+				if len(self.assigned) < 2:
+					for soon, asset, portion, direct in self.assigned:
 						if isinstance(asset, Task):
 							s += "(%.2f, %s, %.1f), " % (soon, asset.__str__(short=True), portion)
 						else:
 							s += "(%.2f, %s, %.1f), " % (soon, asset, portion)
 				else:
-					for soon, asset, portion in self.assigned:
+					for soon, asset, portion, direct in self.assigned:
 						if isinstance(asset, Task):
 							s += "\n\t(%.2f, %s, %.1f), " % (soon, asset.__str__(short=True), portion)
 						else:
@@ -326,13 +320,17 @@ class Task(Reference):
 		if len(self.assigned) > 1:
 			used_assets.append(flagship)
 
-			for soon, asset, portion in self.assigned[1:]:
+			for soon, asset, portion, direct in self.assigned[1:]:
 				used_assets.append(asset)
 
 				results = []
 
-				OrderAdd_Move(asset,  flagship.ref.pos, results)
-				OrderAdd_Merge(asset, flagship,         results)
+				if direct:
+					OrderAdd_Move(asset,  flagship.ref.pos, results)
+					OrderAdd_Merge(asset, flagship,         results)
+				else:
+					OrderAdd_Build(asset, self, results)
+
 				OrderPrint(asset, results)
 
 		return used_assets
@@ -356,15 +354,20 @@ class TaskDestroy(Task):
 		# Second job is to move the asset to the target's position
 
 		if len(self.assigned) == 1:
-			flagship = self.assigned[0][1]
+			soon, flagship, portion, direct = self.assigned[0]
+
 			used_assets.append(flagship)
 
-			# Only actually go after the object if we can complete the task!
-			if self.portion() >= 100:
-				results = []
-				# FIXME: Should actually try an intercept the target!
-				OrderAdd_Move(flagship, self.ref.ref.pos, results)
-				OrderPrint(flagship, results)
+			results = []
+			if direct:
+				# Only actually go after the object if we can complete the task!
+				if self.portion() >= 100:
+					# FIXME: Should actually try an intercept the target!
+					OrderAdd_Move(flagship, self.ref.ref.pos, results)
+			else:
+				OrderAdd_Build(flagship, self, results)
+			
+			OrderPrint(flagship, results)
 
 		return used_assets
 
@@ -378,12 +381,17 @@ class TaskColonise(Task):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1:
-			flagship = self.assigned[0][1]
+			soon, flagship, portion, direct = self.assigned[0]
+
 			used_assets.append(flagship)
 
 			results = []
-			OrderAdd_Move(flagship, self.ref.ref.pos, results)
-			OrderAdd_Colonise(flagship, self.ref, results)
+			if direct:
+				OrderAdd_Move(flagship, self.ref.ref.pos, results)
+				OrderAdd_Colonise(flagship, self.ref, results)
+			else:
+				OrderAdd_Build(flagship, self, results)
+
 			OrderPrint(flagship, results)
 
 		return used_assets
@@ -398,87 +406,28 @@ class TaskTakeOver(TaskColonise):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1:
-			flagship = self.assigned[0][1]
+			soon, flagship, portion, direct = self.assigned[0]
+
 			used_assets.append(flagship)
 
-			# Only actually go after the object if we can complete the task!
-			if self.portion() >= 100:
-				results = []
-				OrderAdd_Move(flagship, self.ref.ref.pos, results)
-				OrderAdd_Colonise(flagship, self.ref, results)
-				OrderPrint(flagship, results)
-
-		return used_assets
-
-
-class TaskBuild(Task):
-	name = 'Build   '
-
-	def issue(self):
-		used_assets = []
-
-		for soon, asset, portion in self.assigned:
-			used_assets.append(asset)
-
 			results = []
+			if direct:
+				# Only actually go after the object if we can complete the task!
+				if self.portion() >= 100:
+					OrderAdd_Move(flagship, self.ref.ref.pos, results)
+					OrderAdd_Colonise(flagship, self.ref, results)
+			else:
+				OrderAdd_Build(flagship, self, results)
 
-			# Remove current orders...
-			connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
-
-			result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
-			result = connection.get_orders(asset.ref.id, 0)
-			ships = {}
-			for id, name, max in result[0].ships[0]:
-				ships[name] = id
-			connection.remove_orders(asset.ref.id, [0]) 
-			
-			if self.ref.task == Task.COLONISE:
-				# If we are referencing a colonise, better build a frigate
-				print "Issuing orders to %s to build a frigate" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1)], 0, "A robot army!"))
-			if self.ref.task == Task.DESTROY:
-				# Better build a battleship
-				print "Issuing orders to %s to build a battleship" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Battleship'],1)], 0, "A robot army!"))
-			if self.ref.task == Task.TAKEOVER:
-				# Better build a battleship and a frigate
-				print "Issuing orders to %s to build a battleship and frigate" % (asset,)
-				results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
-
-			OrderPrint(asset, results)
+			OrderPrint(flagship, results)
 
 		return used_assets
-
-	def long(self):
-		return self.ref.long()
-
-	def portion(self):
-		return self.ref.portion()
-
-	def assign(self, soon, asset, portion=100):
-		"""
-		Assign an asset to this task.
-
-		Soon is how soon this asset will complete it's "portion" of the task.
-
-		Adding a new asset which would take the number of assets working on
-		the task above 100% will cause the method to return a list of
-		assets which are no longer needed.
-		"""
-		a = Task.assign(self, soon, asset, portion)
-	
-		if len(a) != 0:
-			print "---------->", a
-
-		return self.ref.assign(soon, asset, portion)
-
 
 # FIXME: Better way to do this...
 Task.DESTROY  = TaskDestroy
 Task.COLONISE = TaskColonise
 Task.TAKEOVER = TaskTakeOver
-Task.BUILD 	  = TaskBuild
-Task.types = (Task.DESTROY, Task.COLONISE, Task.TAKEOVER, Task.BUILD)
+Task.types = (Task.DESTROY, Task.COLONISE, Task.TAKEOVER)
 
 def OrderPrint(asset, results):
 	"""\
@@ -605,4 +554,29 @@ def OrderAdd_Merge(asset, target, results):
 			results.append(connection.insert_order(asset.ref.id, -1, MERGE_ORDER))
 			asset.ref.order_number += 1
 			break
+
+def OrderAdd_Build(asset, task, results):
+	# Remove current orders...
+	connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
+
+	result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
+	result = connection.get_orders(asset.ref.id, 0)
+	ships = {}
+	for id, name, max in result[0].ships[0]:
+		ships[name] = id
+	connection.remove_orders(asset.ref.id, [0]) 
+	
+	if task.type == Task.COLONISE:
+		# If we are referencing a colonise, better build a frigate
+		print "Issuing orders to %s to build a frigate" % (asset,)
+		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1)], 0, "A robot army!"))
+	if task.type == Task.DESTROY:
+		# Better build a battleship
+		print "Issuing orders to %s to build a battleship" % (asset,)
+		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Battleship'],1)], 0, "A robot army!"))
+	if task.type == Task.TAKEOVER:
+		# Better build a battleship and a frigate
+		print "Issuing orders to %s to build a battleship and frigate" % (asset,)
+		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
+
 
