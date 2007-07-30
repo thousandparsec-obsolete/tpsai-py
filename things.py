@@ -14,6 +14,46 @@ import math
 def dist(a, b):
 	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
+# FIXME: Duplicated from libtpclient-py
+def apply(self, evt):
+	if evt.what == "orders":
+		if evt.action in ("remove", "change"):
+			if failed(self.remove_orders(evt.id, evt.slot)):
+				raise IOError("Unable to remove the order...")
+			else:
+				try:
+					cache.objects[evt.id].order_number -= len(evt.slot)
+				except TypeError:
+					cache.objects[evt.id].order_number -= 1
+		
+		if evt.action in ("create", "change"):
+			if failed(self.insert_order(evt.id, evt.slot, evt.change)):
+				raise IOError("Unable to insert the order...")
+			else:
+				cache.objects[evt.id].order_number += 1
+
+			if evt.slot == -1:
+				evt.slot = len(cache.orders[evt.id])
+				
+			o = self.get_orders(evt.id, evt.slot)[0]
+			if failed(o):
+				raise IOError("Unable to get the order..." + o[1])
+
+			evt.change = o
+	else:
+		raise ValueError("Can't deal with that yet!")
+
+def OrderCreate(oid, slot, type, *args):
+	order = objects.Order(0, oid, slot, type, 0, [], *args)
+	event = cache.CacheDirtyEvent("orders", "create", oid, slot, order)
+	connection.apply(event)
+	cache.apply(event)
+
+def OrderRemove(oid, slot):
+	event = cache.CacheDirtyEvent("orders", "remove", oid, slot, None)
+	connection.apply(event)
+	cache.apply(event)
+
 class LayeredIn(list):
 	def __contains__(self, value):
 		if list.__contains__(self, value):
@@ -242,13 +282,6 @@ class Task(Reference):
 			portion += asset_portion
 		return portion
 
-	def ready(self):
-		for soon, asset, asset_portion, direct in self.assigned:
-			if not direct:
-				return False
-		return True
-		
-
 	def assign(self, soon, asset, portion=100, direct=True):
 		"""
 		Assign an asset to this task.
@@ -317,6 +350,13 @@ class Task(Reference):
 			return "<Task %s - %s (unassigned)>" % (self.name, self.ref)
 	__repr__ = __str__
 
+	def flagship(self):
+		distances = {}
+		for soon, asset, portion, direct in self.assigned:
+			distances[dist(asset.ref.pos, self.ref.pos[0])] = (asset, direct)
+
+		return distances[min(distances.keys())]
+
 	def issue(self):
 		"""\
 		Issue the correct orders to the assigned assets..
@@ -325,22 +365,23 @@ class Task(Reference):
 
 		# First job is to collect all the assets together
 		if len(self.assigned) > 1:
-			soon, flagship, portion, flagdirect = self.assigned[0]
-			used_assets.append(flagship)
+			# Find the flagship
+			flagship, flagdirect = self.flagship()
+			print "Flagship is", flagship, "assembling at", flagship.pos[0]
+			print
 
-			for soon, asset, portion, direct in self.assigned[flagdirect:]:
+			for soon, asset, portion, direct in self.assigned:
 				used_assets.append(asset)
 
-				results = []
-
+				print "Orders for", asset
+				slot=0
 				if direct:
-					OrderAdd_Move(asset,  flagship.pos[0], results)
+					slot += OrderAdd_Move(asset, flagship.pos[0], slot)
 					if flagdirect:
-						OrderAdd_Merge(asset, flagship,        results)
+						slot += OrderAdd_Merge(asset, flagship, slot)
 				else:
-					OrderAdd_Build(asset, self, results)
-
-				OrderPrint(asset, results)
+					slot += OrderAdd_Build(asset, self, slot)
+				OrderPrint(asset)
 
 		return used_assets
 
@@ -361,22 +402,19 @@ class TaskDestroy(Task):
 		used_assets = Task.issue(self)
 
 		# Second job is to move the asset to the target's position
-
 		if len(self.assigned) == 1:
-			soon, flagship, portion, direct = self.assigned[0]
+			soon, asset, portion, direct = self.assigned[0]
 
-			used_assets.append(flagship)
+			used_assets.append(asset)
 
-			results = []
+			print "Orders for", asset
+			slot = 0
 			if direct:
-				# Only actually go after the object if we can complete the task!
-				if self.ready():
-					# FIXME: Should actually try an intercept the target!
-					OrderAdd_Move(flagship, self.ref.pos[0], results)
+				# FIXME: Should actually try an intercept the target!
+				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
 			else:
-				OrderAdd_Build(flagship, self, results)
-			
-			OrderPrint(flagship, results)
+				slot += OrderAdd_Build(asset, self, slot)
+			OrderPrint(asset)
 
 		return used_assets
 
@@ -390,18 +428,18 @@ class TaskColonise(Task):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1:
-			soon, flagship, portion, direct = self.assigned[0]
+			soon, asset, portion, direct = self.assigned[0]
 
-			used_assets.append(flagship)
+			used_assets.append(asset)
 
-			results = []
+			print "Orders for", asset
+			slot = 0
 			if direct:
-				OrderAdd_Move(flagship, self.ref.pos[0], results)
-				OrderAdd_Colonise(flagship, self.ref, results)
+				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
+				slot += OrderAdd_Colonise(asset, self.ref, slot)
 			else:
-				OrderAdd_Build(flagship, self, results)
-
-			OrderPrint(flagship, results)
+				slot += OrderAdd_Build(asset, self, slot)
+			OrderPrint(asset)
 
 		return used_assets
 
@@ -415,20 +453,18 @@ class TaskTakeOver(TaskColonise):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1:
-			soon, flagship, portion, direct = self.assigned[0]
+			soon, asset, portion, direct = self.assigned[0]
 
-			used_assets.append(flagship)
+			used_assets.append(asset)
 
-			results = []
+			print "Orders for", asset
+			slot=0
 			if direct:
-				# Only actually go after the object if we can complete the task!
-				if self.ready():
-					OrderAdd_Move(flagship, self.ref.pos[0], results)
-					OrderAdd_Colonise(flagship, self.ref, results)
+				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
+				slot += OrderAdd_Colonise(asset, self.ref, slot)
 			else:
-				OrderAdd_Build(flagship, self, results)
-
-			OrderPrint(flagship, results)
+				slot += OrderAdd_Build(asset, self, slot)
+			OrderPrint(asset)
 
 		return used_assets
 
@@ -438,168 +474,133 @@ Task.COLONISE = TaskColonise
 Task.TAKEOVER = TaskTakeOver
 Task.types = (Task.DESTROY, Task.COLONISE, Task.TAKEOVER)
 
-def OrderPrint(asset, results):
+def OrderPrint(asset):
 	"""\
-	Print out the results array..
+	Print out the order completion time...
 	"""
-	if len(results) == 0:
-		print
-		return
-
-	if asset.ref.order_number != len(results):
-		print "WARNING: Somehow we have more orders on the object then we added..."
-
-	for i, result in enumerate(results):
-		#print result
-		if not result[0]:
-			raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
-
-		# Order should complete in
-		result = connection.get_orders(asset.id[0], i)
-		if not result[0]:
-			raise IOError("Wasn't able to issue an order for some reason! %s" % repr(result))
-		print "Order %i will complete in %.2f turns" % (i, result[0].turns)
+	for i, order in enumerate(cache.orders[asset.ref.id]):
+		print "Order %i will complete in %.2f turns (%r)" % (i, order.turns, order)
 	print
 
-def OrderAdd_Move(asset, pos, results):
+def OrderAdd_Move(asset, pos, slot):
 	"""\
 	This function issues orders for the asset to move to the given position.
 
 	It won't add any orders if the asset is at the given position.
 	"""
-	if asset.pos[0] == pos:
-		return
+	if asset.ref.pos == pos:
+		print "Move Order     - Object already at destination!"
+		return False
 
 	# FIXME: Check that asset can move!
 
+	oid = asset.ref.id
 	while True:
-		onum = len(results)
-
 		# Check if the asset already has this order
-		if asset.ref.order_number > onum:
-			order = cache.orders[asset.ref.id][onum]
+		if asset.ref.order_number > slot:
+			order = cache.orders[oid][slot]
 			
 			# Remove the order if it isn't a move order
 			if order.subtype != MOVE_ORDER:
-				print "Move order - Current order wasn't a move order!"
-				# FIXME: Should check the return result of this command
-				connection.remove_orders(asset.ref.id, [onum])
-				asset.ref.order_number -= 1
+				print "Move order     - Current order wasn't a move order!"
+				OrderRemove(oid, slot)
 				continue
 
 			# Remove the order if it isn't a move order to the correct location
 			if order.pos != pos:
-				print "Move order - Current order was to wrong destination!"
-				# FIXME: Should check the return result of this command
-				connection.remove_orders(asset.ref.id, [onum])
-				asset.ref.order_number -= 1
+				print "Move order     - Current order was too wrong destination!"
+				OrderRemove(oid, slot)
 				continue
 
 			# Order is correct
-			print "Move order - Object already had correct move order."
-			results.append((True, 'Already existed...'))
+			print "Move order     - Already had correct move order."
 			break
 		else:
-			print "Move order - Issuing new order to %s move %s" % (asset, pos)
+			print "Move order     - Issuing new order to move too %s" % (pos,)
 			# We need to issue a move order instead.
-			results.append(connection.insert_order(asset.ref.id, -1, MOVE_ORDER, pos))
-			asset.ref.order_number += 1
+			OrderCreate(oid, -1, MOVE_ORDER, pos)
 			break
+	return True
 
-def OrderAdd_Colonise(asset, target, results):
+def OrderAdd_Colonise(asset, target, slot):
 	# FIXME: Check that target is a planet!
 
+	oid = asset.ref.id
 	while True:
-		onum = len(results)
-		if asset.ref.order_number > onum:
-			try:
-				order = cache.orders[asset.ref.id][onum]
-			except IndexError, e:
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				import traceback
-				traceback.print_exc()
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		if asset.ref.order_number > slot:
+			order = cache.orders[oid][slot]
 
-				asset.ref.order_number -= 1
-				continue
-
-			# Remove the order if it isn't a move order
+			# Remove the order if it isn't a colonise order
 			if order.subtype != COLONISE_ORDER:
 				print "Colonise order - Current order wasn't a colonise order!"
-				# FIXME: Should check the return result of this command
-				connection.remove_orders(asset.ref.id, [onum])
-				asset.ref.order_number -= 1
+				OrderRemove(oid, slot)
 				continue
 
 			# Order is correct
-			print "Colonise order - Object already had correct colonise order."
-			results.append((True, 'Already existed...'))
+			print "Colonise order - Already had correct colonise order."
 			break
 		else:
-			print "Colonise order - Issuing orders to %s colonise %r" % (asset, target.refs)
+			print "Colonise order - Issuing new order colonise %r" % (target.ref,)
 			# We need to issue a move order instead.
-			results.append(connection.insert_order(asset.ref.id, -1, COLONISE_ORDER)) #, target.refs.id))
-			asset.ref.order_number += 1
+			OrderCreate(oid, -1, COLONISE_ORDER) #, target.refs.id))
 			break
 
-def OrderAdd_Merge(asset, target, results):
-	# FIXME: Check that asset and target are both Fleets!
+	return True
 
+def OrderAdd_Merge(asset, target, slot):
+	# FIXME: Check that asset and target are both Fleets!
+	if asset.ref.id == target.ref.id:
+		return False
+
+	oid = asset.ref.id
 	while True:
-		onum = len(results)
-		if asset.ref.order_number > onum:
-			order = cache.orders[asset.ref.id][onum]
+		if asset.ref.order_number > slot:
+			order = cache.orders[oid][slot]
 
 			# Remove the order if it isn't a move order
 			if order.subtype != MERGE_ORDER:
-				print "Merge order - Current order wasn't a MergeFleet order!"
-				# FIXME: Should check the return result of this command
-				connection.remove_orders(asset.ref.id, [onum])
-				asset.ref.order_number -= 1
+				print "Merge order    - Current order wasn't a Merge order!"
+				OrderRemove(oid, slot)
 				continue
 
-			#if order.target != target.refs.id:
-			#	print "Merge order - Current order didn't target correct object!"
-			#	# FIXME: Should check the return result of this command
-			#	connection.remove_orders(asset.ref.id, [onum])
-			#	asset.ref.order_number -= 1
-			#	continue
-
 			# Order is correct
-			print "Merge order - Object already had correct MergeFleet order."
-			results.append((True, 'Already existed...'))
+			print "Merge order    - Object already had correct MergeFleet order."
 			break
 		else:
-			print "Merge order - Issuing orders to %s merge with %r" % (asset, target.refs)
+			print "Merge order - Issuing orders to merge with %r" % (target.ref,)
 			# We need to issue a move order instead.
-			results.append(connection.insert_order(asset.ref.id, -1, MERGE_ORDER))
-			asset.ref.order_number += 1
+			OrderCreate(oid, -1, MERGE_ORDER)
 			break
 
-def OrderAdd_Build(asset, task, results):
-	# Remove current orders...
-	connection.remove_orders(asset.ref.id, range(0, asset.ref.order_number))
+	return True
 
-	result = connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [], 0, "")
-	result = connection.get_orders(asset.ref.id, 0)
+def OrderAdd_Build(asset, task, slot):
+	oid = asset.ref.id
+
+	# Remove all orders...
+	if asset.ref.order_number > 0:
+		OrderRemove(oid, range(0, asset.ref.order_number))
+
+	# Do a "probe" to work out the types
+	OrderCreate(oid, 0, BUILD_ORDER, [], [], 0, "")
+	result = cache.orders[oid][0]
+	OrderRemove(oid, 0)
 	ships = {}
-	for id, name, max in result[0].ships[0]:
+	for id, name, max in result.ships[0]:
 		ships[name] = id
-	connection.remove_orders(asset.ref.id, [0]) 
-	
-	if task.type == Task.COLONISE:
+
+	# Add the new build order
+	tobuild = []
+	if task.type in (Task.COLONISE, Task.TAKEOVER):
 		# If we are referencing a colonise, better build a frigate
-		print "Issuing orders to %s to build a frigate" % (asset,)
-		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1)], 0, "A robot army!"))
-	if task.type == Task.DESTROY:
+		print "Issuing orders to build a frigate"
+		tobuild.append((ships['Frigate'],1))
+
+	if task.type in (Task.DESTROY, Task.TAKEOVER):
 		# Better build a battleship
-		print "Issuing orders to %s to build a battleship" % (asset,)
-		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Battleship'],1)], 0, "A robot army!"))
-	if task.type == Task.TAKEOVER:
-		# Better build a battleship and a frigate
-		print "Issuing orders to %s to build a battleship and frigate" % (asset,)
-		results.append(connection.insert_order(asset.ref.id, -1, BUILD_ORDER, [], [(ships['Frigate'],1), (ships['Battleship'],1)], 0, "A robot army!"))
+		print "Issuing orders to build a battleship"
+		tobuild.append((ships['Battleship'],1))
 
+	OrderCreate(oid, 0, BUILD_ORDER, [], tobuild, 0, "A robot army!")
 
+	return True

@@ -11,6 +11,7 @@ import copy
 import pprint
 
 import things
+Connection.apply = things.apply
 from things import *
 
 def distancemap(asset, tasks):
@@ -227,15 +228,11 @@ def run(connection, cache):
 		else:
 			tasks.append(Task.DESTROY(threat))
 
-	print tasks
-
 	# For each neutral we want to colonise the planets
 	for neutral in neutrals:
 		if not neutral.ref._subtype is PLANET_TYPE:
 			continue
 		tasks.append(Task.COLONISE(neutral))
-
-
 
 	print "\nStep 1. Assigning tasks to assets.."
 	print "------------------------------------------------------------------"
@@ -247,10 +244,12 @@ def run(connection, cache):
 	used_assets = []
 	for task in taken:
 		print task
+		print 
 		used_assets += task.issue()
+		print
 
-	print
-	print "Checks..."
+	print "\nStep 3. Doing some sanity checks..."
+	print "------------------------------------------------------------------"
 	if len(assets) != len(used_assets):
 		print "Some assets don't have tasks!"
 		print " %i used assets, %s total assets" % (len(used_assets), len(assets))
