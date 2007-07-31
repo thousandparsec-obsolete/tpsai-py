@@ -20,17 +20,10 @@ def apply(self, evt):
 		if evt.action in ("remove", "change"):
 			if failed(self.remove_orders(evt.id, evt.slot)):
 				raise IOError("Unable to remove the order...")
-#			else:
-#				try:
-#					cache.objects[evt.id].order_number -= len(evt.slot)
-#				except TypeError:
-#					cache.objects[evt.id].order_number -= 1
 		
 		if evt.action in ("create", "change"):
 			if failed(self.insert_order(evt.id, evt.slot, evt.change)):
 				raise IOError("Unable to insert the order...")
-#			else:
-#				cache.objects[evt.id].order_number += 1
 
 			if evt.slot == -1:
 				evt.slot = len(cache.orders[evt.id])
