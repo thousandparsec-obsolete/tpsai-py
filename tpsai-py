@@ -206,7 +206,7 @@ def run(connection, cache):
 				combined = False
 				for threat in threats:
 					if object.pos == threat.pos[0]:
-						threat.ref.append(object)
+						threat.refs.append(object)
 						combined = True
 						break
 
