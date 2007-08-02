@@ -5,10 +5,30 @@ This AI bot requires the following be installed,
 
 How this AI bot works.
 
-Step 1 - Classify each object into threat, neutral, asset
-Step 2 - Work out the tasks needed to deal with threats and assets
-Step 3 - Work out which assets can be do each task
+Step 1 - Classify objects in the Universe
+			- threats, things which can hurt us
+			- neutral, things which we want to obtain
+			- assets,  things which we can control
+			- unknown, things which we need to investigate
+Step 2 - Do initial pass at assigning tasks
+Step 3 - Run various culling methods
+			- Over allocated tasks
+			- Under allocated tasks
+Step 4 - Do second pass at assigning tasks
+Step 5 - Issue orders to perform tasks
 
-Step 4 - Assign assets to tasks so that the time to complete each task is
-minimized.
+--------------------------------------------------------------------------
+
+Tasks are printed in the following manner
+
+<Task <type> - <thing this task references> ((<???>%) assigned to [
+	(<turns to complete>, <asset>, <percentage>), <-- Asset directly involved
+	{<turns to complete>, <asset>, <percentage>}, <-- Asset indirectly involved
+
+Example:
+
+<Task TakeOver - <Threat refs=[<Planet @ 17>]> ((34%) assigned to [
+        (3.89, <Asset refs=[<Fleet @ 15>]>, 2.9), 
+        (3.89, <Asset refs=[<Fleet @ 19>]>, 17.1), 
+        {13.83, <Asset refs=[<Planet @ 13>]>, 14.3}])>
 
