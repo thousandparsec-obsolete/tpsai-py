@@ -30,7 +30,7 @@ def task_next(asset, distances):
 		del distances[key]
 
 		# Can we satisfy this task by building something...
-		if BUILD_ORDER in asset.ref.order_types:
+		if things.BUILDFLEET_ORDER in asset.ref.order_types:
 			soon    = 0
 			portion = 100
 
@@ -61,12 +61,12 @@ def task_next(asset, distances):
 
 		# Check we can go where needed for this task
 		if asset.ref.pos != task.ref.pos[0]:
-			if not MOVE_ORDER in asset.ref.order_types:
+			if not things.MOVE_ORDER in asset.ref.order_types:
 				continue
 
 		if task.type in (Task.COLONISE, Task.TAKEOVER):
 			# Only assets which have the colonise order are useful for these tasks
-			if not (COLONISE_ORDER in asset.ref.order_types):
+			if not (things.COLONISE_ORDER in asset.ref.order_types):
 				continue
 
 			if task.type == Task.COLONISE:
@@ -114,8 +114,6 @@ def tasks_assign(assets, tasks):
 				break
 
 			soon, task, portion, direct = possible
-			print soon, task.long()
-
 			# Can we complete this task sooner?
 			# Or does this task need help to be completed...
 			if task.long() > soon or task.portion() < 100:
@@ -147,9 +145,11 @@ def connect():
 	if len(sys.argv) > 1:
 		uri = sys.argv.pop(1)
 	else:
-		uri = 'tp://tpsai-py:cannonfodder@localhost/'
+		uri = 'tp://tpsai-py:cannonfodder@localhost/tp'
 
 	host, username, game, password = url2bits(uri)
+	if not game is None:
+		username = "%s@%s" % (username, game)
 
 	connection = Connection()
 
@@ -183,9 +183,18 @@ def run(connection, cache):
 		pass
 
 	cache.update(connection, callback)
+
+
 	# FIXME: Must be a better way to do this..
 	things.cache      = cache
 	things.connection = connection
+	for id, orderdesc in objects.OrderDescs().items():
+		print id, orderdesc
+		s = "%s_ORDER" % orderdesc._name.upper()
+		if not hasattr(things, s):
+			print "Unknown order", orderdesc
+		else:
+			setattr(things, s, id)
 
 	pid = cache.players[0].id
 	print "My ID is ", pid
@@ -196,6 +205,12 @@ def run(connection, cache):
 
 	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
 	for object in cache.objects.values():
+		print repr(object),
+		if FLEET_TYPE is object._subtype:
+			for shipid, amount in object.ships:
+				print (cache.designs[shipid].name, amount),
+		print
+
 		if hasattr(object, 'owner'):
 			if object.owner in (0, -1):
 				neutrals.append(Neutral([object]))
@@ -213,6 +228,8 @@ def run(connection, cache):
 				if not combined:
 					threats.append(Threat([object]))
 
+	print threats
+
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
 	#  - All threats have a reenforment factor added (dependent on other threats)
@@ -221,7 +238,6 @@ def run(connection, cache):
 	tasks = []
 	
 	# For each threat, we need to eliminate it or take it over
-	print threats
 	for threat in threats:
 		if PLANET_TYPE in threat._subtype:
 			tasks.append(Task.TAKEOVER(threat))
@@ -246,6 +262,7 @@ def run(connection, cache):
 		print task
 		print 
 		used_assets += task.issue()
+		print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 		print
 
 	print "\nStep 3. Doing some sanity checks..."

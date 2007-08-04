@@ -129,10 +129,10 @@ class Reference(object):
 PLANET_TYPE = 3
 FLEET_TYPE  = 4
 
-MOVE_ORDER     = 1
-BUILD_ORDER    = 2
-COLONISE_ORDER = 3
-MERGE_ORDER    = 5
+MOVE_ORDER       = None
+BUILDFLEET_ORDER = None
+COLONISE_ORDER   = None
+MERGEFLEET_ORDER = None
 
 FRIGATE_SPEED    = 200000000
 BATTLESHIP_SPEED = 300000000
@@ -566,7 +566,7 @@ def OrderAdd_Colonise(asset, targets, slot):
 		else:
 			print "Colonise order - Issuing new order colonise %r" % (target,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, COLONISE_ORDER) #, target.id))
+			OrderCreate(oid, -1, COLONISE_ORDER, target.id)
 			break
 
 	return True
@@ -582,7 +582,7 @@ def OrderAdd_Merge(asset, target, slot):
 			order = cache.orders[oid][slot]
 
 			# Remove the order if it isn't a move order
-			if order.subtype != MERGE_ORDER:
+			if order.subtype != MERGEFLEET_ORDER:
 				print "Merge order    - Current order (%r) wasn't a Merge order!" % order
 				OrderRemove(oid, slot)
 				continue
@@ -593,7 +593,7 @@ def OrderAdd_Merge(asset, target, slot):
 		else:
 			print "Merge order    - Issuing orders to merge with %r" % (target.ref,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, MERGE_ORDER)
+			OrderCreate(oid, -1, MERGEFLEET_ORDER)
 			break
 
 	return True
@@ -601,12 +601,8 @@ def OrderAdd_Merge(asset, target, slot):
 def OrderAdd_Build(asset, task, slot):
 	oid = asset.ref.id
 
-	# Remove all orders...
-	if asset.ref.order_number > 0:
-		OrderRemove(oid, range(0, asset.ref.order_number))
-
 	# Do a "probe" to work out the types
-	OrderCreate(oid, 0, BUILD_ORDER, [], [], 0, "")
+	OrderCreate(oid, 0, BUILDFLEET_ORDER, [], [], 0, "")
 	result = cache.orders[oid][0]
 	OrderRemove(oid, 0)
 	ships = {}
@@ -625,6 +621,28 @@ def OrderAdd_Build(asset, task, slot):
 		print "Issuing orders to build a battleship"
 		tobuild.append((ships['Battleship'],1))
 
-	OrderCreate(oid, 0, BUILD_ORDER, [], tobuild, 0, "A robot army!")
+	while True:
+		if asset.ref.order_number > slot:
+			order = cache.orders[oid][slot]
+
+			# Remove the order if it isn't a colonise order
+			if order.subtype != BUILDFLEET_ORDER:
+				print "Build order    - Current order (%r) wasn't a build order!" % order
+				OrderRemove(oid, slot)
+				continue
+
+			if order.ships[1] != tobuild:
+				print "Build order    - Current order (%r) wasn't building the correct stuff!" % order
+				OrderRemove(oid, slot)
+				continue
+
+			# Order is correct
+			print "Build order    - Already had correct build order."
+			break
+		else:
+			print "Build order    - Issuing new order build."
+			# We need to issue a move order instead.
+			OrderCreate(oid, 0, BUILDFLEET_ORDER, [], tobuild, 0, "A robot army!")
+			break
 
 	return True
