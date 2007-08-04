@@ -220,7 +220,7 @@ class Threat(Reference):
 			if threat._subtype == FLEET_TYPE:
 				for shipid, num in threat.ships:
 					# Scouts do nothing!
-					if cache.designs[shipid].name == 'Scouts':
+					if cache.designs[shipid].name == 'Scout':
 						continue				
 	
 					# Frigates...
