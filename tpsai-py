@@ -291,6 +291,12 @@ def persisence():
 						traceback.print_exc()
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+
+						import os
+						print sys.argv
+						#os.execl(__file__, *sys.argv)
+						sys.exit(1)
+
 		else:	
 			time.sleep(0.1)	
 
