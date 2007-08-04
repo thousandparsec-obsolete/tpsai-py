@@ -18,21 +18,24 @@ def dist(a, b):
 def apply(self, evt):
 	if evt.what == "orders":
 		if evt.action in ("remove", "change"):
-			if failed(self.remove_orders(evt.id, evt.slot)):
-				raise IOError("Unable to remove the order...")
+
+			r = self.remove_orders(evt.id, evt.slot)
+			if failed(r):
+				raise IOError("Unable to remove the order %s from %s (%s)..." % (evt.slot, evt.id, r[1]))
 		
 		if evt.action in ("create", "change"):
-			if failed(self.insert_order(evt.id, evt.slot, evt.change)):
-				raise IOError("Unable to insert the order...")
+			r = self.insert_order(evt.id, evt.slot, evt.change)
+			if failed(r):
+				raise IOError("Unable to insert the order %s (%r) from %s (%s)..." % (evt.slot, evt.change, evt.id, r[1]))
 
 			if evt.slot == -1:
 				evt.slot = len(cache.orders[evt.id])
 				
-			o = self.get_orders(evt.id, evt.slot)[0]
+			o = self.get_orders(evt.id, evt.slot)
 			if failed(o):
-				raise IOError("Unable to get the order..." + o[1])
+				raise IOError("Unable to get the order %s from %s (%s)..." % (evt.slot, evt.id, o[1]))
 
-			evt.change = o
+			evt.change = o[0]
 	else:
 		raise ValueError("Can't deal with that yet!")
 
@@ -108,13 +111,13 @@ class Reference(object):
 		>>> print obj2.pos
 		[10, 10, 10]
 		"""
-		if value == 'refs':
-			raise SyntaxError('This should not happen!')
+		if value in ('refs', 'ref'):
+			raise SyntaxError('__getattr__ got %s, this should not happen!' % value)
 
 		r = LayeredIn()
 		for ref in self.refs:
 			if not hasattr(ref, value):
-				raise TypeError("One of the references (%s) does not have that attribute!")
+				raise TypeError("One of the references (%r) does not have that attribute (%s)!" % (ref, value))
 
 			v = getattr(ref, value)
 			if not v in r:
@@ -515,8 +518,15 @@ def OrderAdd_Move(asset, pos, slot):
 			break
 	return True
 
-def OrderAdd_Colonise(asset, target, slot):
-	# FIXME: Check that target is a planet!
+def OrderAdd_Colonise(asset, targets, slot):
+	# Find the planet which we want to colonise
+	target = None
+	for ref in targets.refs:
+		if ref._subtype == PLANET_TYPE:
+			target = ref
+			break
+	if target is None:
+		raise TypeError("Trying to colonise something which isn't a planet!")
 
 	oid = asset.ref.id
 	while True:
@@ -530,12 +540,12 @@ def OrderAdd_Colonise(asset, target, slot):
 				continue
 
 			# Order is correct
-			print "Colonise order - Already had correct colonise order."
+			print "Colonise order - Already had correct colonise order (%r)." % (target,)
 			break
 		else:
-			print "Colonise order - Issuing new order colonise %r" % (target.ref,)
+			print "Colonise order - Issuing new order colonise %r" % (target,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, COLONISE_ORDER) #, target.refs.id))
+			OrderCreate(oid, -1, COLONISE_ORDER) #, target.id))
 			break
 
 	return True
