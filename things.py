@@ -519,13 +519,13 @@ def OrderAdd_Move(asset, pos, slot):
 			
 			# Remove the order if it isn't a move order
 			if order.subtype != MOVE_ORDER:
-				print "Move order     - Current order wasn't a move order!"
+				print "Move order     - Current order (%r) wasn't a move order!" % order
 				OrderRemove(oid, slot)
 				continue
 
 			# Remove the order if it isn't a move order to the correct location
 			if order.pos != pos:
-				print "Move order     - Current order was too wrong destination!"
+				print "Move order     - Current order (%r) was too wrong destination!" % order
 				OrderRemove(oid, slot)
 				continue
 
@@ -556,7 +556,7 @@ def OrderAdd_Colonise(asset, targets, slot):
 
 			# Remove the order if it isn't a colonise order
 			if order.subtype != COLONISE_ORDER:
-				print "Colonise order - Current order wasn't a colonise order!"
+				print "Colonise order - Current order (%r) wasn't a colonise order!" % order
 				OrderRemove(oid, slot)
 				continue
 
@@ -583,7 +583,7 @@ def OrderAdd_Merge(asset, target, slot):
 
 			# Remove the order if it isn't a move order
 			if order.subtype != MERGE_ORDER:
-				print "Merge order    - Current order wasn't a Merge order!"
+				print "Merge order    - Current order (%r) wasn't a Merge order!" % order
 				OrderRemove(oid, slot)
 				continue
 
