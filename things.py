@@ -377,6 +377,7 @@ class Task(Reference):
 						slot += OrderAdd_Merge(asset, flagship, slot)
 				else:
 					slot += OrderAdd_Build(asset, self, slot)
+				OrderAdd_Nothing(asset, slot)
 				OrderPrint(asset)
 
 		return used_assets
@@ -410,6 +411,7 @@ class TaskDestroy(Task):
 				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
 			else:
 				slot += OrderAdd_Build(asset, self, slot)
+			OrderAdd_Nothing(asset, slot)
 			OrderPrint(asset)
 
 		return used_assets
@@ -435,6 +437,7 @@ class TaskColonise(Task):
 				slot += OrderAdd_Colonise(asset, self.ref, slot)
 			else:
 				slot += OrderAdd_Build(asset, self, slot)
+			OrderAdd_Nothing(asset, slot)
 			OrderPrint(asset)
 
 		return used_assets
@@ -460,6 +463,7 @@ class TaskTakeOver(TaskColonise):
 				slot += OrderAdd_Colonise(asset, self.ref, slot)
 			else:
 				slot += OrderAdd_Build(asset, self, slot)
+			OrderAdd_Nothing(asset, slot)
 			OrderPrint(asset)
 
 		return used_assets
@@ -477,6 +481,23 @@ def OrderPrint(asset):
 	for i, order in enumerate(cache.orders[asset.ref.id]):
 		print "Order %i will complete in %.2f turns (%r)" % (i, order.turns, order)
 	print
+
+def OrderAdd_Nothing(asset, slot):
+	"""\
+	This function removed any remaining orders which might still exist!
+	"""
+	oid = asset.ref.id
+	while True:
+		# Check if the asset already has this order
+		if asset.ref.order_number > slot:
+			order = cache.orders[oid][slot]
+			
+			print "Extra order    - Remove this %r extra order" % (order,)
+			OrderRemove(oid, slot)
+		else:
+			break
+	return True
+
 
 def OrderAdd_Move(asset, pos, slot):
 	"""\
