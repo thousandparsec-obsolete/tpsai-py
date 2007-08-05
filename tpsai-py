@@ -190,7 +190,7 @@ def run(connection, cache):
 	things.connection = connection
 	for id, orderdesc in objects.OrderDescs().items():
 		print id, orderdesc
-		s = "%s_ORDER" % orderdesc._name.upper()
+		s = "%s_ORDER" % orderdesc._name.replace(' ', '').upper()
 		if not hasattr(things, s):
 			print "Unknown order", orderdesc
 		else:
