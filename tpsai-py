@@ -209,6 +209,8 @@ def run(connection, cache):
 		if FLEET_TYPE is object._subtype:
 			for shipid, amount in object.ships:
 				print (cache.designs[shipid].name, amount),
+			else:
+				print "WTF, no ships?"
 		print
 
 		if hasattr(object, 'owner'):
@@ -283,6 +285,8 @@ def run(connection, cache):
 			if FLEET_TYPE is o._subtype:
 				for shipid, amount in o.ships:
 					print (cache.designs[shipid].name, amount),
+				else:
+					print "WTF, no ships?"
 			print
 
 import time
