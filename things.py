@@ -274,11 +274,18 @@ class Task(Reference):
 
 	def portion(self):
 		portion = 0
-		for soon, asset, asset_portion, direct in self.assigned:
+		totallyfulfill = False
+
+		for soon, asset, asset_portion, direct, totally in self.assigned:
 			portion += asset_portion
+			if totally:
+				totallyfulfill = True
+
+		if not totallyfulfill:
+			porition = min(portion, 99)
 		return portion
 
-	def assign(self, soon, asset, portion=100, direct=True):
+	def assign(self, soon, asset, portion=100, direct=True, totally=True):
 		"""
 		Assign an asset to this task.
 
@@ -307,15 +314,18 @@ class Task(Reference):
 			raise TypeError("Can not be assigned to oneself...")
 
 		## Actual method...
-		self.assigned.append((soon, asset, portion, direct))
+		self.assigned.append((soon, asset, portion, direct, totally))
 		self.assigned.sort()
 
 		portion = 0
-
-		for i, (soon, asset, asset_portion, direct) in enumerate(self.assigned):
+		totallyfulfill = False
+		
+		for i, (soon, asset, asset_portion, direct, totally) in enumerate(self.assigned):
 			portion += asset_portion
+			if totally:
+				totallyfulfill = True
 
-			if portion >= 100:
+			if portion >= 100 and totallyfulfill:
 				break
 
 		i += 1
@@ -328,13 +338,13 @@ class Task(Reference):
 		if len(self.assigned) > 0:
 			s = '['
 			if len(self.assigned) < 2:
-				for soon, asset, portion, direct in self.assigned:
+				for soon, asset, portion, direct, totally in self.assigned:
 					if direct:
 						s += "(%.2f, %s, %.1f), " % (soon, asset, portion)
 					else:
 						s += "{%.2f, %s, %.1f}, " % (soon, asset, portion)
 			else:
-				for soon, asset, portion, direct in self.assigned:
+				for soon, asset, portion, direct, totally in self.assigned:
 					if direct:
 						s += "\n\t(%.2f, %s, %.1f), " % (soon, asset, portion)
 					else:
@@ -348,7 +358,7 @@ class Task(Reference):
 
 	def flagship(self):
 		distances = {}
-		for soon, asset, portion, direct in self.assigned:
+		for soon, asset, portion, direct, totally in self.assigned:
 			distances[dist(asset.ref.pos, self.ref.pos[0])] = (asset, direct)
 
 		return distances[min(distances.keys())]
@@ -360,13 +370,13 @@ class Task(Reference):
 		used_assets = []
 
 		# First job is to collect all the assets together
-		if len(self.assigned) > 1:
+		if len(self.assigned) > 1 or self.portion() < 100:
 			# Find the flagship
 			flagship, flagdirect = self.flagship()
 			print "Flagship is", flagship, "assembling at", flagship.pos[0]
 			print
 
-			for soon, asset, portion, direct in self.assigned:
+			for soon, asset, portion, direct, totally in self.assigned:
 				used_assets.append(asset)
 
 				print "Orders for", asset
@@ -399,8 +409,8 @@ class TaskDestroy(Task):
 		used_assets = Task.issue(self)
 
 		# Second job is to move the asset to the target's position
-		if len(self.assigned) == 1:
-			soon, asset, portion, direct = self.assigned[0]
+		if len(self.assigned) == 1 and self.portion() >= 100:
+			soon, asset, portion, direct, totally = self.assigned[0]
 
 			used_assets.append(asset)
 
@@ -425,8 +435,8 @@ class TaskColonise(Task):
 
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
-		if len(self.assigned) == 1:
-			soon, asset, portion, direct = self.assigned[0]
+		if len(self.assigned) == 1 and self.portion() >= 100:
+			soon, asset, portion, direct, totally = self.assigned[0]
 
 			used_assets.append(asset)
 
@@ -451,8 +461,8 @@ class TaskTakeOver(TaskColonise):
 
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
-		if len(self.assigned) == 1:
-			soon, asset, portion, direct = self.assigned[0]
+		if len(self.assigned) == 1 and self.portion() >= 100:
+			soon, asset, portion, direct, totally = self.assigned[0]
 
 			used_assets.append(asset)
 

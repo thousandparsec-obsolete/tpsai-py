@@ -57,14 +57,14 @@ def task_next(asset, distances):
 			if task.type in (Task.DESTROY, Task.TAKEOVER):
 				portion = (BATTLESHIP_POWER/(task.power[0]()+MARGIN))*100
 
-			return soon, task, portion, False
+			return soon, task, portion, False, True
 
 		# Check we can go where needed for this task
 		if asset.ref.pos != task.ref.pos[0]:
 			if not things.MOVE_ORDER in asset.ref.order_types:
 				continue
 
-		if task.type in (Task.COLONISE, Task.TAKEOVER):
+		if task.type in (Task.COLONISE,):
 			# Only assets which have the colonise order are useful for these tasks
 			if not (things.COLONISE_ORDER in asset.ref.order_types):
 				continue
@@ -75,7 +75,7 @@ def task_next(asset, distances):
 					# Ships always move at the slowest speed...
 					soon = dist(asset.ref.pos, task.ref.pos[0])/FRIGATE_SPEED
 
-				return soon, task, 100, True
+				return soon, task, 100, True, True
 
 		if task.type in (Task.DESTROY, Task.TAKEOVER):
 			# If this asset has no power, do nothing...
@@ -89,7 +89,7 @@ def task_next(asset, distances):
 			if asset.ref.pos != task.ref.pos[0]:
 				soon = dist(asset.ref.pos, task.ref.pos[0])/BATTLESHIP_SPEED
 
-			return soon, task, portion, True
+			return soon, task, portion, True, things.COLONISE_ORDER in asset.ref.order_types
 
 def tasks_assign(assets, tasks):
 	"""
@@ -113,18 +113,18 @@ def tasks_assign(assets, tasks):
 			if possible is None:
 				break
 
-			soon, task, portion, direct = possible
+			soon, task, portion, direct, totally = possible
 			# Can we complete this task sooner?
 			# Or does this task need help to be completed...
 			if task.long() > soon or task.portion() < 100:
-				unassigned = task.assign(soon, asset, portion, direct)
+				unassigned = task.assign(soon, asset, portion, direct, totally)
 			
 				print "Assigned to", task, "will complete %.2f%% in %.2f turns" % (portion, soon)
 				taken.add(task)
 
 				# Reschedual assignment of assets which are now released...
 				print "Took over from %r" % unassigned
-				for soon, asset, portion, direct in unassigned:
+				for soon, asset, portion, direct, totally in unassigned:
 					assets.insert(0, asset)
 
 				break
