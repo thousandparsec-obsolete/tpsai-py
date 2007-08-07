@@ -69,8 +69,25 @@ class Reference(object):
 
 		self.refs = refs
 
-	def __str__(self):
-		return "<%s refs=%r>" % (self.__class__.__name__, self.refs)
+	def __str__(self, short=False):
+		s = ""
+		for ref in self.refs:
+			if isinstance(ref, Reference):
+				s += str(ref)
+			else:
+				if FLEET_TYPE == ref._subtype:
+					s += "Fleet %i (" % ref.id
+					for shipid, amount in ref.ships:
+						s += "%s %s%s, " % (amount, cache.designs[shipid].name, ['', 's'][amount > 1])
+					s = s[:-2] + ")"
+				else:
+					s += repr(ref)[1:-1]
+			s += ", "	
+
+		s = s[:-2]
+		if short:
+			return s
+		return "<%s refs=%s>" % (self.__class__.__name__, s)
 	__repr__ = __str__
 
 	def __getattr__(self, value):
@@ -245,6 +262,56 @@ class Task(Reference):
 	"""\
 	A thing which needs to be done.
 	"""
+	class Fulfilment(object):
+		"""\
+		Fulfilment class contains a 'request' to Fullfil a certain task.
+		"""
+		def __init__(self, asset, soon, portion=100.0, direct=True, totally=True):
+			## Error checking....
+			if not isinstance(soon, float):
+				try:
+					soon = float(soon)
+				except:
+					raise TypeError("Fulfilment's 'soon' argument must be a float.")
+
+			if not isinstance(portion, float):
+				try:
+					portion = float(portion)
+				except:
+					raise TypeError("Fulfilment's 'portion' argument must be a float.")
+
+			if not isinstance(direct, bool):
+				raise TypeError("Fulfilment's 'direct' argument must be a bool.")
+
+			if not isinstance(totally, bool):
+				raise TypeError("Fulfilment's 'totally' argument must be a bool.")
+
+			if not isinstance(asset, Asset):
+				raise TypeError("Fulfilment's 'asset' argument must be a Asset object.")
+
+			self.soon    = soon
+			self.asset   = asset
+			self.portion = portion
+			self.direct  = direct
+			self.totally = totally
+
+		def __str__(self):
+			if self.direct:
+				if self.totally:
+					brackets = " [%s]"
+				else:
+					brackets = "![%s]"
+			else:
+				brackets = " {%s}"
+			return brackets % ("%s in %.2f turns will complete %.2f%%" % (self.asset.__str__(True), self.soon, self.portion))
+		__repr__ = __str__
+
+		def __cmp__(self, other):
+			if not isinstance(other, Task.Fulfilment):
+				raise TypeError("Don't know how to compare these types?")
+			return cmp((self.soon, self.portion), (other.soon, other.portion))
+
+
 	def __init__(self, ref):
 		if self.__class__ == Task:
 			raise SyntaxError("Can not instanciate base Task class!")
@@ -269,23 +336,24 @@ class Task(Reference):
 		Long returns how long this task will take to complete in turns.
 		"""
 		if len(self.assigned) > 0:
-			return self.assigned[-1][0]
+			return self.assigned[-1].soon
 		return float('inf')
 
 	def portion(self):
 		portion = 0
-		totallyfulfill = False
+		totallyfulfil = False
 
-		for soon, asset, asset_portion, direct, totally in self.assigned:
-			portion += asset_portion
-			if totally:
-				totallyfulfill = True
+		for fulfilment in self.assigned:
+			portion += fulfilment.portion
+			if fulfilment.totally:
+				totallyfulfil = True
 
-		if not totallyfulfill:
-			porition = min(portion, 99)
+		if not totallyfulfil:
+			portion = min(portion, 99)
+
 		return portion
 
-	def assign(self, soon, asset, portion=100, direct=True, totally=True):
+	def assign(self, fulfilment):
 		"""
 		Assign an asset to this task.
 
@@ -296,70 +364,53 @@ class Task(Reference):
 		assets which are no longer needed.
 		"""
 		## Error checking....
-		if not isinstance(soon, float):
-			try:
-				soon = float(soon)
-			except:
-				raise TypeError("Assign's 'soon' argument must be a float.")
-
-		if not isinstance(portion, float):
-			try:
-				portion = float(portion)
-			except:
-				raise TypeError("Assign's 'portion' argument must be a float.")
-
-		if not isinstance(asset, Reference):
-			raise TypeError("Assign's asset must be a Reference object.")
-		if self == asset:
+		if not isinstance(fulfilment, Task.Fulfilment):
+			raise TypeError("Assign's argument must be a Fulfilment object.")
+		if self == fulfilment.asset:
 			raise TypeError("Can not be assigned to oneself...")
 
 		## Actual method...
-		self.assigned.append((soon, asset, portion, direct, totally))
+		self.assigned.append(fulfilment)
 		self.assigned.sort()
 
 		portion = 0
-		totallyfulfill = False
+		totallyfulfil = False
 		
-		for i, (soon, asset, asset_portion, direct, totally) in enumerate(self.assigned):
-			portion += asset_portion
-			if totally:
-				totallyfulfill = True
+		for i, fulfilment in enumerate(self.assigned):
+			portion += fulfilment.portion
+			if fulfilment.totally:
+				totallyfulfil = True
 
-			if portion >= 100 and totallyfulfill:
+			if portion >= 100 and totallyfulfil:
 				break
 
 		i += 1
 
 		leftover = self.assigned[i:]
 		del self.assigned[i:]
-		return leftover
+		return [fulfilment.asset for fulfilment in leftover]
 
 	def __str__(self, short=False):
 		if len(self.assigned) > 0:
 			s = '['
-			if len(self.assigned) < 2:
-				for soon, asset, portion, direct, totally in self.assigned:
-					if direct:
-						s += "(%.2f, %s, %.1f), " % (soon, asset, portion)
-					else:
-						s += "{%.2f, %s, %.1f}, " % (soon, asset, portion)
-			else:
-				for soon, asset, portion, direct, totally in self.assigned:
-					if direct:
-						s += "\n\t(%.2f, %s, %.1f), " % (soon, asset, portion)
-					else:
-						s += "\n\t{%.2f, %s, %.1f}, " % (soon, asset, portion)
+			for fulfilment in self.assigned:
+				s+= "\n\t%s, " % fulfilment
 			s = s[:-2] +"]"
-
 			return "<Task %s - %s ((%.0f%%) assigned to %s)>" % (self.name, self.ref, self.portion(), s)
 		else:
 			return "<Task %s - %s (unassigned)>" % (self.name, self.ref)
 	__repr__ = __str__
 
 	def flagship(self):
+		"""
+		Returns the flagship for the fleet which will fulfil the task.
+		Also returns if this flagship has yet to be built.
+
+		(asset, built?)
+		"""
 		distances = {}
-		for soon, asset, portion, direct, totally in self.assigned:
-			distances[dist(asset.ref.pos, self.ref.pos[0])] = (asset, direct)
+		for fulfilment in self.assigned:
+			distances[dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
 
 		return distances[min(distances.keys())]
 
@@ -372,23 +423,23 @@ class Task(Reference):
 		# First job is to collect all the assets together
 		if len(self.assigned) > 1 or self.portion() < 100:
 			# Find the flagship
-			flagship, flagdirect = self.flagship()
+			flagship, flagbuilt = self.flagship()
 			print "Flagship is", flagship, "assembling at", flagship.pos[0]
 			print
 
-			for soon, asset, portion, direct, totally in self.assigned:
-				used_assets.append(asset)
+			for fulfilment in self.assigned:
+				used_assets.append(fulfilment.asset)
 
-				print "Orders for", asset
+				print "Orders for", fulfilment.asset.__str__(True)
 				slot=0
-				if direct:
-					slot += OrderAdd_Move(asset, flagship.pos[0], slot)
-					if flagdirect:
-						slot += OrderAdd_Merge(asset, flagship, slot)
+				if fulfilment.direct:
+					slot += OrderAdd_Move(fulfilment.asset, flagship.pos[0], slot)
+					if flagbuilt:
+						slot += OrderAdd_Merge(fulfilment.asset, flagship, slot)
 				else:
-					slot += OrderAdd_Build(asset, self, slot)
-				OrderAdd_Nothing(asset, slot)
-				OrderPrint(asset)
+					slot += OrderAdd_Build(fulfilment.asset, self, slot)
+				OrderAdd_Nothing(fulfilment.asset, slot)
+				OrderPrint(fulfilment.asset)
 
 		return used_assets
 
@@ -410,19 +461,19 @@ class TaskDestroy(Task):
 
 		# Second job is to move the asset to the target's position
 		if len(self.assigned) == 1 and self.portion() >= 100:
-			soon, asset, portion, direct, totally = self.assigned[0]
+			fulfilment = self.assigned[0]
 
-			used_assets.append(asset)
+			used_assets.append(fulfilment.asset)
 
-			print "Orders for", asset
+			print "Orders for", fulfilment.asset.__str__(True)
 			slot = 0
-			if direct:
+			if fulfilment.direct:
 				# FIXME: Should actually try an intercept the target!
-				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
+				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
 			else:
-				slot += OrderAdd_Build(asset, self, slot)
-			OrderAdd_Nothing(asset, slot)
-			OrderPrint(asset)
+				slot += OrderAdd_Build(fulfilment.asset, self, slot)
+			OrderAdd_Nothing(fulfilment.asset, slot)
+			OrderPrint(fulfilment.asset)
 
 		return used_assets
 
@@ -436,19 +487,19 @@ class TaskColonise(Task):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1 and self.portion() >= 100:
-			soon, asset, portion, direct, totally = self.assigned[0]
+			fulfilment = self.assigned[0]
 
-			used_assets.append(asset)
+			used_assets.append(fulfilment.asset)
 
-			print "Orders for", asset
+			print "Orders for", fulfilment.asset.__str__(True)
 			slot = 0
-			if direct:
-				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
-				slot += OrderAdd_Colonise(asset, self.ref, slot)
+			if fulfilment.direct:
+				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
+				slot += OrderAdd_Colonise(fulfilment.asset, self.ref, slot)
 			else:
-				slot += OrderAdd_Build(asset, self, slot)
-			OrderAdd_Nothing(asset, slot)
-			OrderPrint(asset)
+				slot += OrderAdd_Build(fulfilment.asset, self, slot)
+			OrderAdd_Nothing(fulfilment.asset, slot)
+			OrderPrint(fulfilment.asset)
 
 		return used_assets
 
@@ -462,19 +513,19 @@ class TaskTakeOver(TaskColonise):
 		# Second job is to move the asset to the target's position
 		# Third  job is to colonise the target
 		if len(self.assigned) == 1 and self.portion() >= 100:
-			soon, asset, portion, direct, totally = self.assigned[0]
+			fulfilment = self.assigned[0]
 
-			used_assets.append(asset)
+			used_assets.append(fulfilment.asset)
 
-			print "Orders for", asset
+			print "Orders for", fulfilment.asset.__str__(True)
 			slot=0
-			if direct:
-				slot += OrderAdd_Move(asset, self.ref.pos[0], slot)
-				slot += OrderAdd_Colonise(asset, self.ref, slot)
+			if fulfilment.direct:
+				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
+				slot += OrderAdd_Colonise(fulfilment.asset, self.ref, slot)
 			else:
-				slot += OrderAdd_Build(asset, self, slot)
-			OrderAdd_Nothing(asset, slot)
-			OrderPrint(asset)
+				slot += OrderAdd_Build(fulfilment.asset, self, slot)
+			OrderAdd_Nothing(fulfilment.asset, slot)
+			OrderPrint(fulfilment.asset)
 
 		return used_assets
 

@@ -57,7 +57,7 @@ def task_next(asset, distances):
 			if task.type in (Task.DESTROY, Task.TAKEOVER):
 				portion = (BATTLESHIP_POWER/(task.power[0]()+MARGIN))*100
 
-			return soon, task, portion, False, True
+			return task, Task.Fulfilment(asset, soon, portion, direct=False)
 
 		# Check we can go where needed for this task
 		if asset.ref.pos != task.ref.pos[0]:
@@ -75,7 +75,7 @@ def task_next(asset, distances):
 					# Ships always move at the slowest speed...
 					soon = dist(asset.ref.pos, task.ref.pos[0])/FRIGATE_SPEED
 
-				return soon, task, 100, True, True
+				return task, Task.Fulfilment(asset, soon, 100)
 
 		if task.type in (Task.DESTROY, Task.TAKEOVER):
 			# If this asset has no power, do nothing...
@@ -89,7 +89,7 @@ def task_next(asset, distances):
 			if asset.ref.pos != task.ref.pos[0]:
 				soon = dist(asset.ref.pos, task.ref.pos[0])/BATTLESHIP_SPEED
 
-			return soon, task, portion, True, things.COLONISE_ORDER in asset.ref.order_types
+			return task, Task.Fulfilment(asset, soon, portion, totally=(things.COLONISE_ORDER in asset.ref.order_types))
 
 def tasks_assign(assets, tasks):
 	"""
@@ -113,18 +113,19 @@ def tasks_assign(assets, tasks):
 			if possible is None:
 				break
 
-			soon, task, portion, direct, totally = possible
+			task, fulfilment = possible
+
 			# Can we complete this task sooner?
 			# Or does this task need help to be completed...
-			if task.long() > soon or task.portion() < 100:
-				unassigned = task.assign(soon, asset, portion, direct, totally)
+			if task.long() > fulfilment.soon or task.portion() < 100:
+				unassigned = task.assign(fulfilment)
 			
-				print "Assigned to", task, "will complete %.2f%% in %.2f turns" % (portion, soon)
+				print "Assigned to", task, "will complete %.2f%% in %.2f turns" % (fulfilment.portion, fulfilment.soon)
 				taken.add(task)
 
 				# Reschedual assignment of assets which are now released...
 				print "Took over from %r" % unassigned
-				for soon, asset, portion, direct, totally in unassigned:
+				for asset in unassigned:
 					assets.insert(0, asset)
 
 				break
@@ -281,13 +282,7 @@ def run(connection, cache):
 
 		for id in s1.difference(s2):
 			o = cache.objects[id]
-			print '\t', repr(o), o._subtype,
-			if FLEET_TYPE == o._subtype:
-				if len(o.ships) == 0:
-					print "WTF, no ships?",
-				for shipid, amount in o.ships:
-					print (cache.designs[shipid].name, amount),
-			print
+			print '\t', Asset([o]).__str__(True)
 
 import time
 def persisence():
