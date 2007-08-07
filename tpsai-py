@@ -206,7 +206,7 @@ def run(connection, cache):
 	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
 	for object in cache.objects.values():
 		print repr(object),
-		if FLEET_TYPE is object._subtype:
+		if FLEET_TYPE == object._subtype:
 			if len(object.ships) == 0:
 				print "WTF, no ships?",
 			for shipid, amount in object.ships:
@@ -282,7 +282,7 @@ def run(connection, cache):
 		for id in s1.difference(s2):
 			o = cache.objects[id]
 			print '\t', repr(o), o._subtype,
-			if FLEET_TYPE is o._subtype:
+			if FLEET_TYPE == o._subtype:
 				if len(o.ships) == 0:
 					print "WTF, no ships?",
 				for shipid, amount in o.ships:
