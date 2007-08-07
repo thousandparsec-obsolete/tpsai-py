@@ -146,6 +146,7 @@ class Reference(object):
 PLANET_TYPE = 3
 FLEET_TYPE  = 4
 
+
 MOVE_ORDER       = None
 BUILDFLEET_ORDER = None
 COLONISE_ORDER   = None
@@ -159,6 +160,8 @@ BATTLESHIP_BUILD = 6
 
 FRIGATE_POWER    = 0.2
 BATTLESHIP_POWER = 1.0
+
+ASSEMBLE_DISTANCE = BATTLESHIP_SPEED * 4.0
 
 MARGIN = 5
 
@@ -426,7 +429,17 @@ class Task(Reference):
 		for fulfilment in self.assigned:
 			distances[dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
 
-		return distances[min(distances.keys())]
+		keys = distances.keys()
+		keys.sort()
+
+		# Don't want to assemble too close to the target!
+		# FIXME: If we are orbiting a planet, probably safe to use this ship...
+		while len(keys) > 1:
+			if keys[0] > ASSEMBLE_DISTANCE:
+				break
+			keys.pop(0)
+
+		return distances[keys[0]]
 
 	def issue(self):
 		"""\
