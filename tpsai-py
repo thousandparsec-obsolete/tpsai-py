@@ -272,37 +272,42 @@ def run(connection, cache):
 	print "          another assignment"
 	print "------------------------------------------------------------------"
 
-	# Finding if the objects could instead complete another task...
-	i = 0
-	while i < len(taken):
-		task = list(taken)[i]
+	# Sort the tasks by how much they will be completed...
+	tlist = list(taken)
+	tlist.sort()
 
-		if task.portion() < 100:
-			print
-			print "The following task is under assigned, reassigning the assets"
-			print task
+	taken = set()
+	while len(tlist) > 0:
+		task = tlist.pop(0)
 
-			reassigned = []
-			for fulfilment in task.assigned:
-				reassigned.append(fulfilment.asset)
-			task.assigned = []
+		if task.portion() >= 100:
+			taken.add(task)
+			continue
 
-			taken.remove(task)
-			taken.update(tasks_assign(distances, reassigned, tasks))
-		else:
-			i+= 1
+		print
+		print "The following task is under assigned, reassigning the assets"
+		print task
+
+		reassigned = []
+		for fulfilment in task.assigned:
+			reassigned.append(fulfilment.asset)
+		task.assigned = []
+
+		tlist += tasks_assign(distances, reassigned, tasks)
+		tlist.sort()
 
 	print "\nStep 3. Assigning tasks to assets which still don't have tasks"
 	print "------------------------------------------------------------------"
 	# Find all the assets which are not used..	
 	unused_assets = copy.copy(assets)
+	print "All assets..."
 	pprint.pprint(unused_assets)
 	for task in taken:
 		for fulfilment in task.assigned:
-			print fulfilment.asset
 			unused_assets.remove(fulfilment.asset)
 
 	# Assign these to partial tasks...
+	print "These assets don't have a task yet.."
 	pprint.pprint(unused_assets)
 
 	distances = tasks_distances(unused_assets, tasks)

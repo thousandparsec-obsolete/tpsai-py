@@ -261,6 +261,15 @@ class Threat(Reference):
 
 		return power
 
+	def __eq__(self, other):
+		if not isinstance(other, Threat):
+			return False
+		return [ref.id for ref in self.refs] == [ref.id for ref in other.refs]
+
+	def __neq__(self, other):
+		return not self.__eq__(other)
+
+
 class Neutral(Asset, Threat):
 	"""\
 	A Neutral object is anything which could possibly be an asset or a threat to the computer.
@@ -268,6 +277,15 @@ class Neutral(Asset, Threat):
 	def ref(self):
 		return self.refs[0]
 	ref = property(ref)
+
+	def __eq__(self, other):
+		if not isinstance(other, Neutral):
+			return False
+		return self.ref.id == other.ref.id
+
+	def __neq__(self, other):
+		return not self.__eq__(other)
+
 
 class Task(Reference):
 	"""\
@@ -322,7 +340,6 @@ class Task(Reference):
 				raise TypeError("Don't know how to compare these types?")
 			return cmp((self.soon, self.portion), (other.soon, other.portion))
 
-
 	def __init__(self, ref):
 		if self.__class__ == Task:
 			raise SyntaxError("Can not instanciate base Task class!")
@@ -333,6 +350,23 @@ class Task(Reference):
 		## Actual method...
 		Reference.__init__(self, [ref])
 		self.assigned = []
+
+	def __eq__(self, other):
+		"""
+		Too tasks are equal if they refer to the same thing.
+		"""
+		if not isinstance(other, Task):
+			return False
+		return self.ref == other.ref
+	def __neq__(self, other):
+		return not self.__eq__(other)
+	def __cmp__(self, other):
+		"""
+		Tasks are compared by their portions if they are not equal.
+		"""
+		if self == other:
+			return 0
+		return cmp(self.portion(), other.portion())
 
 	def ref(self):
 		return self.refs[0]
