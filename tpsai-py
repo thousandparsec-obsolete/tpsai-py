@@ -91,13 +91,30 @@ def task_next(asset, distances):
 
 			return task, Task.Fulfilment(asset, soon, portion, totally=(things.COLONISE_ORDER in asset.ref.order_types))
 
-def tasks_assign(assets, tasks):
-	"""
-	Assigns assets to each task.
-	"""
+def tasks_distances(assets, tasks):
 	distances = {}
 	for asset in assets:
 		distances[asset] = distancemap(asset, tasks)
+	return distances
+
+def tasks_distances_print(distances):
+	for asset, tasks in distances.items():
+		print
+		print asset
+
+		keys = tasks.keys()
+		keys.sort()
+		for key in keys[:5]:
+			distance = key
+			task     = tasks[key]
+
+			print '\t', distance, ':', task.__str__(True)[:80]
+
+
+def tasks_assign(distances, assets, tasks):
+	"""
+	Assigns assets to each task.
+	"""
 	assets = copy.copy(assets)
 
 	taken = set()
@@ -135,7 +152,7 @@ def tasks_assign(assets, tasks):
 			print "Nothing.."
 			continue
 
-	return list(taken)
+	return set(taken)
 
 def connect():
 	debug = False
@@ -246,22 +263,62 @@ def run(connection, cache):
 			continue
 		tasks.append(Task.COLONISE(neutral))
 
-	print "\nStep 1. Assigning tasks to assets.."
+	print "\nStep 1. Assigning tasks to assets (first pass)"
 	print "------------------------------------------------------------------"
-	taken = tasks_assign(assets, tasks)
+	distances = tasks_distances(assets, tasks)
+	taken     = tasks_assign(distances, assets, tasks)
+
+	print "\nStep 2. Find tasks which couldn't be fully completed an try"
+	print "          another assignment"
+	print "------------------------------------------------------------------"
+
+	# Finding if the objects could instead complete another task...
+	i = 0
+	while i < len(taken):
+		task = list(taken)[i]
+
+		if task.portion() < 100:
+			print
+			print "The following task is under assigned, reassigning the assets"
+			print task
+
+			reassigned = []
+			for fulfilment in task.assigned:
+				reassigned.append(fulfilment.asset)
+			task.assigned = []
+
+			taken.remove(task)
+			taken.update(tasks_assign(distances, reassigned, tasks))
+		else:
+			i+= 1
+
+	print "\nStep 3. Assigning tasks to assets which still don't have tasks"
+	print "------------------------------------------------------------------"
+	# Find all the assets which are not used..	
+	unused_assets = copy.copy(assets)
+	pprint.pprint(unused_assets)
+	for task in taken:
+		for fulfilment in task.assigned:
+			print fulfilment.asset
+			unused_assets.remove(fulfilment.asset)
+
+	# Assign these to partial tasks...
+	pprint.pprint(unused_assets)
+
+	distances = tasks_distances(unused_assets, tasks)
+	taken.update(tasks_assign(distances, unused_assets, tasks))
 
 	# Set all the orders so the tasks are performed
-	print "\nStep 2. Issuing orders to do tasks.."
+	print "\nStep 4. Issuing orders to do tasks.."
 	print "------------------------------------------------------------------"
 	used_assets = []
 	for task in taken:
 		print task
-		print 
 		used_assets += task.issue()
 		print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 		print
 
-	print "\nStep 3. Doing some sanity checks..."
+	print "\nStep 5. Doing some sanity checks..."
 	print "------------------------------------------------------------------"
 	if len(assets) != len(used_assets):
 		print "Some assets don't have tasks!"

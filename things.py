@@ -201,6 +201,14 @@ class Asset(Reference):
 		return self.refs[0]
 	ref = property(ref)
 
+	def __eq__(self, other):
+		if not isinstance(other, Asset):
+			return False
+		return self.ref.id == other.ref.id
+
+	def __neq__(self, other):
+		return not self.__eq__(other)
+
 class Threat(Reference):
 	"""\
 	A threat is anything which could possibly hurt the computer.
@@ -391,6 +399,12 @@ class Task(Reference):
 		return [fulfilment.asset for fulfilment in leftover]
 
 	def __str__(self, short=False):
+		if short:
+			if len(self.assigned) > 0:
+				return "<Task %s - %s (%.0f%%)>" % (self.name, self.ref, self.portion())
+			else:
+				return "<Task %s - %s (unassigned)>" % (self.name, self.ref)
+
 		if len(self.assigned) > 0:
 			s = '['
 			for fulfilment in self.assigned:
