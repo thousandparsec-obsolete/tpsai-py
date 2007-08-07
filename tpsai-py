@@ -206,14 +206,6 @@ def run(connection, cache):
 
 	# Classify each object as an Asset/Threat or Neutral and sort on the magnitude
 	for object in cache.objects.values():
-		print repr(object),
-		if FLEET_TYPE == object._subtype:
-			if len(object.ships) == 0:
-				print "WTF, no ships?",
-			for shipid, amount in object.ships:
-				print (cache.designs[shipid].name, amount),
-		print
-
 		if hasattr(object, 'owner'):
 			if object.owner in (0, -1):
 				neutrals.append(Neutral([object]))
@@ -231,7 +223,8 @@ def run(connection, cache):
 				if not combined:
 					threats.append(Threat([object]))
 
-	print threats
+	for threat in threats:
+		print threat
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge

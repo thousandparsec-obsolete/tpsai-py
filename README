@@ -5,16 +5,18 @@ This AI bot requires the following be installed,
 
 How this AI bot works.
 
+* - yet to be implimented
+
 Step 1 - Classify objects in the Universe
 			- threats, things which can hurt us
 			- neutral, things which we want to obtain
 			- assets,  things which we can control
-			- unknown, things which we need to investigate
+			- *unknown, things which we need to investigate
 Step 2 - Do initial pass at assigning tasks
-Step 3 - Run various culling methods
+Step 3 - *Run various culling methods
 			- Over allocated tasks
 			- Under allocated tasks
-Step 4 - Do second pass at assigning tasks
+Step 4 - *Do second pass at assigning tasks
 Step 5 - Issue orders to perform tasks
 
 --------------------------------------------------------------------------
@@ -22,8 +24,9 @@ Step 5 - Issue orders to perform tasks
 Tasks are printed in the following manner
 
 <Task <type> - <thing this task references> ((<???>%) assigned to [
-	(<turns to complete>, <asset>, <percentage>), <-- Asset directly involved
-	{<turns to complete>, <asset>, <percentage>}, <-- Asset indirectly involved
+	 [<turns to complete>, <asset>, <percentage>], <-- Asset directly involved
+	![<turns to complete>, <asset>, <percentage>], <-- Asset directly involved but can not complete the task by itself
+	 {<turns to complete>, <asset>, <percentage>}, <-- Asset indirectly involved
 
 Example:
 
