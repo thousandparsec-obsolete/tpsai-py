@@ -259,7 +259,7 @@ def run(connection, cache):
 
 	# For each neutral we want to colonise the planets
 	for neutral in neutrals:
-		if not neutral.ref._subtype is PLANET_TYPE:
+		if not neutral.ref._subtype == PLANET_TYPE:
 			continue
 		tasks.append(Task.COLONISE(neutral))
 
