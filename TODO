@@ -1,0 +1,12 @@
+
+Dealing with RFTS strange even/odd stuff.
+ - Create different tasks depending on turn?
+ - Always create all tasks but only issue the orders at the right turn
+
+Need to add an explore task.
+
+Need to figure out how you deal with "improvement".
+Need a portable way to figure out when a battle is a good idea - impliment Rusty's idea.
+
+
+
