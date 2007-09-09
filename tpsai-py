@@ -126,6 +126,10 @@ def tasks_assign(distances, assets, tasks):
 
 		possible = None
 		while True:
+			if not distances.has_key(asset):
+				print "(WARNING: %s - out of distances!)" % asset
+				break
+
 			possible = task_next(asset, distances[asset])
 			if possible is None:
 				break
@@ -150,7 +154,6 @@ def tasks_assign(distances, assets, tasks):
 		# Nothing for me to do
 		if possible is None:
 			print "Nothing.."
-			continue
 
 	return set(taken)
 
@@ -310,7 +313,7 @@ def run(connection, cache):
 	print "These assets don't have a task yet.."
 	pprint.pprint(unused_assets)
 
-	distances = tasks_distances(unused_assets, tasks)
+	distances = tasks_distances(assets, tasks)
 	taken.update(tasks_assign(distances, unused_assets, tasks))
 
 	# Set all the orders so the tasks are performed
@@ -365,7 +368,7 @@ def persisence():
 
 						import os
 						print sys.argv
-						#os.execl(__file__, *sys.argv)
+						os.execl(__file__, *sys.argv)
 						sys.exit(1)
 
 		else:	
