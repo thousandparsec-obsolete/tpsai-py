@@ -342,6 +342,14 @@ def run(connection, cache):
 			o = cache.objects[id]
 			print '\t', Asset([o]).__str__(True)
 
+	print "\nStep 6. Clean up the messages..."
+	print "------------------------------------------------------------------"
+	for bid in cache.boards.keys():
+		no = len(cache.messages[bid])
+		if no > 0:
+			print "On board %i removing %i messages." % (bid, no)
+			connection.remove_messages(bid, slots=range(0, no))
+
 import time
 def persisence():
 	connection, cache = connect()
