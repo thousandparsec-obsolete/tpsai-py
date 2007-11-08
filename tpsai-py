@@ -358,6 +358,7 @@ import time, gc, random
 def persisence():
 	connection, cache = connect()
 
+	collected = None
 	while True:
 		connection.pump()
 
@@ -368,6 +369,8 @@ def persisence():
 				if isinstance(frame, objects.TimeRemaining):
 					if frame.time == 0:
 						continue
+
+
 					try:
 						if (not "--nosleep" in sys.argv) and frame.time/3 > 20:
 							sleepfor = random.randint(0, min(frame.time/3, 60))
@@ -379,6 +382,7 @@ def persisence():
 								sys.stdout.flush()
 							print
 
+						collected = None
 						run(connection, cache)
 					except Exception, e:
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -394,10 +398,11 @@ def persisence():
 						sys.exit(1)
 
 		else:
-			collected = gc.collect()
-			if collected > 0:
-				print
-				print "Collected %i objects." % collected
+			if collected is None:
+				collected = gc.collect()
+				if collected > 0:
+					print
+					print "Collected %i objects." % collected
 			time.sleep(0.1)	
 
 def main():
