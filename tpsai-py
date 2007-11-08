@@ -161,11 +161,15 @@ def connect():
 	debug = False
 
 	import sys
-	print sys.argv
 
-	if len(sys.argv) > 1:
-		uri = sys.argv.pop(1)
-	else:
+	uri = None
+	for arg in sys.argv[1:]:
+		if arg.startswith('-'):
+			continue
+		uri = arg
+		break
+	
+	if uri is None:
 		uri = 'tp://tpsai-py:cannonfodder@localhost/tp'
 
 	host, username, game, password = url2bits(uri)
@@ -350,7 +354,7 @@ def run(connection, cache):
 			print "On board %i removing %i messages." % (bid, no)
 			connection.remove_messages(bid, slots=range(0, no))
 
-import time, gc
+import time, gc, random
 def persisence():
 	connection, cache = connect()
 
@@ -364,7 +368,17 @@ def persisence():
 				if isinstance(frame, objects.TimeRemaining):
 					if frame.time == 0:
 						continue
-					try: 
+					try:
+						if (not "--nosleep" in sys.argv) and frame.time/3 > 20:
+							sleepfor = random.randint(0, min(frame.time/3, 60))
+							print "Sleeping for %s seconds before downloading." % sleepfor,
+							sys.stdout.flush()
+							for i in xrange(0, sleepfor):
+								time.sleep(1)
+								sys.stdout.write('.')
+								sys.stdout.flush()
+							print
+
 						run(connection, cache)
 					except Exception, e:
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -397,14 +411,12 @@ def main_try():
 
 if __name__ == "__main__":
 	import sys
-	if len(sys.argv) > 1 and sys.argv[1] == '-p':
-		sys.argv.pop(1)
+	if '-p' in sys.argv:
 		import hotshot
 		prof = hotshot.Profile("hotshot_stats")
 		prof.runcall(main)
 		prof.close()
-	if len(sys.argv) > 1 and sys.argv[1] == '-s':
-		sys.argv.pop(1)
+	if '-s' in sys.argv:
 		main()
 	else:
 		persisence()
