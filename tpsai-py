@@ -350,7 +350,7 @@ def run(connection, cache):
 			print "On board %i removing %i messages." % (bid, no)
 			connection.remove_messages(bid, slots=range(0, no))
 
-import time
+import time, gc
 def persisence():
 	connection, cache = connect()
 
@@ -379,7 +379,11 @@ def persisence():
 						os.execl(__file__, *sys.argv)
 						sys.exit(1)
 
-		else:	
+		else:
+			collected = gc.collect()
+			if collected > 0:
+				print
+				print "Collected %i objects." % collected
 			time.sleep(0.1)	
 
 def main():
