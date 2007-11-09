@@ -7,12 +7,14 @@ from tp.client.cache import Cache
 
 version = (0, 0, 1)
 
+import sys
 import copy
 import pprint
 
 import things
 Connection.apply = things.apply
 from things import *
+from tasks import *
 
 def distancemap(asset, tasks):
 	distances = {}
@@ -89,7 +91,7 @@ def task_next(asset, distances):
 			if asset.ref.pos != task.ref.pos[0]:
 				soon = dist(asset.ref.pos, task.ref.pos[0])/BATTLESHIP_SPEED
 
-			return task, Task.Fulfilment(asset, soon, portion, totally=(things.COLONISE_ORDER in asset.ref.order_types))
+			return task, Task.Fulfilment(asset, soon, portion)
 
 def tasks_distances(assets, tasks):
 	distances = {}
@@ -140,8 +142,10 @@ def tasks_assign(distances, assets, tasks):
 			# Or does this task need help to be completed...
 			if task.long() > fulfilment.soon or task.portion() < 100:
 				unassigned = task.assign(fulfilment)
-			
-				print "Assigned to", task, "will complete %.2f%% in %.2f turns" % (fulfilment.portion, fulfilment.soon)
+
+				print "Assigned to"
+				print task
+
 				taken.add(task)
 
 				# Reschedual assignment of assets which are now released...
@@ -159,8 +163,6 @@ def tasks_assign(distances, assets, tasks):
 
 def connect():
 	debug = False
-
-	import sys
 
 	uri = None
 	for arg in sys.argv[1:]:
@@ -293,24 +295,39 @@ def run(connection, cache):
 
 		print
 		print "The following task is under assigned, reassigning the assets"
+		print "------------------------------------------------------------"
 		print task
 
 		reassigned = []
-		for fulfilment in task.assigned:
+		for fulfilment in task.unassign():
 			reassigned.append(fulfilment.asset)
-		task.assigned = []
 
-		tlist += tasks_assign(distances, reassigned, tasks)
+		print reassigned
+
+		tlist_extra = tasks_assign(distances, reassigned, tasks)
+		for task in tlist_extra:
+			if not task in tlist:
+				tlist.append(task)
+
+		print
+		print
+		print "------------------------------------------------------------"
+		for t in tlist:
+			print t
+		print "------------------------------------------------------------"
+
 		tlist.sort()
 
 	print "\nStep 3. Assigning tasks to assets which still don't have tasks"
 	print "------------------------------------------------------------------"
 	# Find all the assets which are not used..	
+	print "These are all assets.."
+	pprint.pprint(assets)
+
 	unused_assets = copy.copy(assets)
-	print "All assets..."
-	pprint.pprint(unused_assets)
 	for task in taken:
-		for fulfilment in task.assigned:
+		print task
+		for fulfilment in task.fulfilments():
 			unused_assets.remove(fulfilment.asset)
 
 	# Assign these to partial tasks...
@@ -370,7 +387,6 @@ def persisence():
 					if frame.time == 0:
 						continue
 
-
 					try:
 						if (not "--nosleep" in sys.argv) and frame.time/3 > 20:
 							sleepfor = random.randint(0, min(frame.time/3, 60))
@@ -403,6 +419,7 @@ def persisence():
 				if collected > 0:
 					print
 					print "Collected %i objects." % collected
+				sys.stdout.flush()
 			time.sleep(0.1)	
 
 def main():
@@ -415,7 +432,6 @@ def main_try():
 		print e
 
 if __name__ == "__main__":
-	import sys
 	if '-p' in sys.argv:
 		import hotshot
 		prof = hotshot.Profile("hotshot_stats")
