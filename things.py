@@ -5,10 +5,9 @@ from tp.netlib import failed, constants, objects
 from tp.netlib.client import url2bits
 from tp.client.cache import Cache
 
-version = (0, 0, 1)
+import server
 
-cache      = None
-connection = None
+version = (0, 0, 1)
 
 import math
 def dist(a, b):
@@ -29,7 +28,7 @@ def apply(self, evt):
 				raise IOError("Unable to insert the order %s (%r) from %s (%s)..." % (evt.slot, evt.change, evt.id, r[1]))
 
 			if evt.slot == -1:
-				evt.slot = len(cache.orders[evt.id])
+				evt.slot = len(server.cache.orders[evt.id])
 				
 			o = self.get_orders(evt.id, evt.slot)
 			if failed(o):
@@ -41,14 +40,14 @@ def apply(self, evt):
 
 def OrderCreate(oid, slot, type, *args):
 	order = objects.Order(0, oid, slot, type, 0, [], *args)
-	event = cache.CacheDirtyEvent("orders", "create", oid, slot, order)
-	connection.apply(event)
-	cache.apply(event)
+	event = server.cache.CacheDirtyEvent("orders", "create", oid, slot, order)
+	server.connection.apply(event)
+	server.cache.apply(event)
 
 def OrderRemove(oid, slot):
-	event = cache.CacheDirtyEvent("orders", "remove", oid, slot, None)
-	connection.apply(event)
-	cache.apply(event)
+	event = server.cache.CacheDirtyEvent("orders", "remove", oid, slot, None)
+	server.connection.apply(event)
+	server.cache.apply(event)
 
 class LayeredIn(list):
 	def __contains__(self, value):
@@ -75,10 +74,10 @@ class Reference(object):
 			if isinstance(ref, Reference):
 				s += str(ref)
 			else:
-				if FLEET_TYPE == ref._subtype:
+				if server.FLEET_TYPE == ref._subtype:
 					s += "Fleet %i (" % ref.id
 					for shipid, amount in ref.ships:
-						s += "%s %s%s, " % (amount, cache.designs[shipid].name, ['', 's'][amount > 1])
+						s += "%s %s%s, " % (amount, server.cache.designs[shipid].name, ['', 's'][amount > 1])
 					s = s[:-2] + ")"
 				else:
 					s += repr(ref)[1:-1]
@@ -142,27 +141,6 @@ class Reference(object):
 
 		return r
 
-# FIXME: These should be defined in a "profile" somewhere as they are all server specific...
-PLANET_TYPE = 3
-FLEET_TYPE  = 4
-
-
-MOVE_ORDER       = None
-BUILDFLEET_ORDER = None
-COLONISE_ORDER   = None
-MERGEFLEET_ORDER = None
-
-FRIGATE_SPEED    = 200000000
-BATTLESHIP_SPEED = 300000000
-
-FRIGATE_BUILD    = 2
-BATTLESHIP_BUILD = 6
-
-FRIGATE_POWER    = 0.2
-BATTLESHIP_POWER = 1.0
-
-ASSEMBLE_DISTANCE = BATTLESHIP_SPEED * 4.0
-
 MARGIN = 5
 
 class Asset(Reference):
@@ -180,20 +158,20 @@ class Asset(Reference):
 		power = 0
 
 		for asset in self.refs:
-			if asset._subtype == FLEET_TYPE:
+			if asset._subtype == server.FLEET_TYPE:
 				for shipid, num in asset.ships:
 					# Scouts do nothing!
-					if cache.designs[shipid].name == 'Scout':
+					if server.cache.designs[shipid].name == 'Scout':
 						continue				
 	
 					# Frigates...
-					if cache.designs[shipid].name == 'Frigate':
-						power += FRIGATE_POWER*num
+					if server.cache.designs[shipid].name == 'Frigate':
+						power += server.FRIGATE_POWER*num
 						continue
 
-					if cache.designs[shipid].name == 'Battleship':
+					if server.cache.designs[shipid].name == 'Battleship':
 						# Battleships
-						power += BATTLESHIP_POWER*num
+						power += server.BATTLESHIP_POWER*num
 						continue
 
 					print "WARNING! Unknown ship type!"
@@ -238,26 +216,26 @@ class Threat(Reference):
 		power = 0
 
 		for threat in self.refs:
-			if threat._subtype == PLANET_TYPE:
+			if threat._subtype == server.PLANET_TYPE:
 				# Check if this is a homeworld
 				if False:
-					power += BATTLESHIP_POWER*5
+					power += server.BATTLESHIP_POWER*5
 				else:
-					power += BATTLESHIP_POWER*2
+					power += server.BATTLESHIP_POWER*2
 
-			if threat._subtype == FLEET_TYPE:
+			if threat._subtype == server.FLEET_TYPE:
 				for shipid, num in threat.ships:
 					# Scouts do nothing!
-					if cache.designs[shipid].name == 'Scout':
+					if server.cache.designs[shipid].name == 'Scout':
 						continue				
 	
 					# Frigates...
-					if cache.designs[shipid].name == 'Frigate':
-						power += FRIGATE_POWER*num
+					if server.cache.designs[shipid].name == 'Frigate':
+						power += server.FRIGATE_POWER*num
 						continue
 
 					# Battleships or unknown...
-					power += BATTLESHIP_POWER*num
+					power += server.BATTLESHIP_POWER*num
 
 		return power
 

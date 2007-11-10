@@ -11,6 +11,8 @@ import sys
 import copy
 import pprint
 
+import server
+
 import things
 Connection.apply = things.apply
 from things import *
@@ -32,18 +34,18 @@ def task_next(asset, distances):
 		del distances[key]
 
 		# Can we satisfy this task by building something...
-		if things.BUILDFLEET_ORDER in asset.ref.order_types:
+		if server.BUILDFLEET_ORDER in asset.ref.order_types:
 			soon    = 0
 			portion = 100
 
 			# How long is it going to take to "build" this task
 			# FIXME: There should be a good way to abstract this...
 			if task.type == Task.COLONISE:
-				soon += FRIGATE_BUILD
+				soon += server.FRIGATE_BUILD
 			if task.type == Task.DESTROY:
-				soon += BATTLESHIP_BUILD
+				soon += server.BATTLESHIP_BUILD
 			if task.type == Task.TAKEOVER:
-				soon += BATTLESHIP_BUILD + FRIGATE_BUILD
+				soon += server.BATTLESHIP_BUILD + server.FRIGATE_BUILD
 
 			# How long will it take for our built object to get to the target?
 			if asset.ref.pos != task.ref.pos[0]:
@@ -51,9 +53,9 @@ def task_next(asset, distances):
 				#   build + distance/speed
 				d = dist(asset.ref.pos, task.ref.pos[0]) 
 				if task.type in (Task.COLONISE, Task.TAKEOVER):
-					soon += d/FRIGATE_SPEED
+					soon += d/server.FRIGATE_SPEED
 				if task.type == Task.DESTROY:
-					soon += d/BATTLESHIP_SPEED
+					soon += d/server.BATTLESHIP_SPEED
 
 			# Work out the portion of this task we are actually going to build
 			if task.type in (Task.DESTROY, Task.TAKEOVER):
@@ -63,19 +65,19 @@ def task_next(asset, distances):
 
 		# Check we can go where needed for this task
 		if asset.ref.pos != task.ref.pos[0]:
-			if not things.MOVE_ORDER in asset.ref.order_types:
+			if not server.MOVE_ORDER in asset.ref.order_types:
 				continue
 
 		if task.type in (Task.COLONISE,):
 			# Only assets which have the colonise order are useful for these tasks
-			if not (things.COLONISE_ORDER in asset.ref.order_types):
+			if not (server.COLONISE_ORDER in asset.ref.order_types):
 				continue
 
 			if task.type == Task.COLONISE:
 				soon = 0
 				if asset.ref.pos != task.ref.pos[0]:
 					# Ships always move at the slowest speed...
-					soon = dist(asset.ref.pos, task.ref.pos[0])/FRIGATE_SPEED
+					soon = dist(asset.ref.pos, task.ref.pos[0])/server.FRIGATE_SPEED
 
 				return task, Task.Fulfilment(asset, soon, 100)
 
@@ -89,7 +91,7 @@ def task_next(asset, distances):
 			portion = (asset.power()/(task.ref.power()+MARGIN))*100
 
 			if asset.ref.pos != task.ref.pos[0]:
-				soon = dist(asset.ref.pos, task.ref.pos[0])/BATTLESHIP_SPEED
+				soon = dist(asset.ref.pos, task.ref.pos[0])/server.BATTLESHIP_SPEED
 
 			return task, Task.Fulfilment(asset, soon, portion)
 
@@ -211,17 +213,16 @@ def run(connection, cache):
 
 	cache.update(connection, callback)
 
-
 	# FIXME: Must be a better way to do this..
-	things.cache      = cache
-	things.connection = connection
+	server.cache      = cache
+	server.connection = connection
 	for id, orderdesc in objects.OrderDescs().items():
 		print id, orderdesc
 		s = "%s_ORDER" % orderdesc._name.replace(' ', '').upper()
-		if not hasattr(things, s):
+		if not hasattr(server, s):
 			print "Unknown order", orderdesc
 		else:
-			setattr(things, s, id)
+			setattr(server, s, id)
 
 	pid = cache.players[0].id
 	print "My ID is ", pid
@@ -261,14 +262,14 @@ def run(connection, cache):
 	
 	# For each threat, we need to eliminate it or take it over
 	for threat in threats:
-		if PLANET_TYPE in threat._subtype:
+		if server.PLANET_TYPE in threat._subtype:
 			tasks.append(Task.TAKEOVER(threat))
 		else:
 			tasks.append(Task.DESTROY(threat))
 
 	# For each neutral we want to colonise the planets
 	for neutral in neutrals:
-		if not neutral.ref._subtype == PLANET_TYPE:
+		if not neutral.ref._subtype == server.PLANET_TYPE:
 			continue
 		tasks.append(Task.COLONISE(neutral))
 

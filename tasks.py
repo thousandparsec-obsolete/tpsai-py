@@ -1,5 +1,5 @@
 
-import things
+import server
 from things import Reference, Asset, OrderCreate, OrderRemove
 
 """
@@ -85,7 +85,7 @@ class Coloniser(Role):
 	"""
 	def check(self, f):
 		# Check that the object can colonise a planet...		
-		return things.COLONISE_ORDER in f.asset.ref.order_types or not f.direct
+		return server.COLONISE_ORDER in f.asset.ref.order_types or not f.direct
 
 
 class Task(Reference):
@@ -318,7 +318,7 @@ class Task(Reference):
 		distances = {}
 
 		for fulfilment in self.fulfilments():
-			distances[things.dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
+			distances[server.dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
 
 		keys = distances.keys()
 		keys.sort()
@@ -326,7 +326,7 @@ class Task(Reference):
 		# Don't want to assemble too close to the target!
 		# FIXME: If we are orbiting a planet, probably safe to use this ship...
 		while len(keys) > 1:
-			if keys[0] > things.ASSEMBLE_DISTANCE:
+			if keys[0] > server.ASSEMBLE_DISTANCE:
 				break
 			keys.pop(0)
 
@@ -462,7 +462,7 @@ def OrderPrint(asset):
 	"""\
 	Print out the order completion time...
 	"""
-	for i, order in enumerate(things.cache.orders[asset.ref.id]):
+	for i, order in enumerate(server.cache.orders[asset.ref.id]):
 		print "Order %i will complete in %.2f turns (%r)" % (i, order.turns, order)
 	print
 
@@ -474,7 +474,7 @@ def OrderAdd_Nothing(asset, slot):
 	while True:
 		# Check if the asset already has this order
 		if asset.ref.order_number > slot:
-			order = things.cache.orders[oid][slot]
+			order = server.cache.orders[oid][slot]
 			
 			print "Extra order    - Remove this %r extra order" % (order,)
 			OrderRemove(oid, slot)
@@ -499,10 +499,10 @@ def OrderAdd_Move(asset, pos, slot):
 	while True:
 		# Check if the asset already has this order
 		if asset.ref.order_number > slot:
-			order = things.cache.orders[oid][slot]
+			order = server.cache.orders[oid][slot]
 			
 			# Remove the order if it isn't a move order
-			if order.subtype != things.MOVE_ORDER:
+			if order.subtype != server.MOVE_ORDER:
 				print "Move order     - Current order (%r) wasn't a move order!" % order
 				OrderRemove(oid, slot)
 				continue
@@ -519,7 +519,7 @@ def OrderAdd_Move(asset, pos, slot):
 		else:
 			print "Move order     - Issuing new order to move too %s" % (pos,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, things.MOVE_ORDER, pos)
+			OrderCreate(oid, -1, server.MOVE_ORDER, pos)
 			break
 	return True
 
@@ -527,7 +527,7 @@ def OrderAdd_Colonise(asset, targets, slot):
 	# Find the planet which we want to colonise
 	target = None
 	for ref in targets.refs:
-		if ref._subtype == things.PLANET_TYPE:
+		if ref._subtype == server.PLANET_TYPE:
 			target = ref
 			break
 	if target is None:
@@ -536,10 +536,10 @@ def OrderAdd_Colonise(asset, targets, slot):
 	oid = asset.ref.id
 	while True:
 		if asset.ref.order_number > slot:
-			order = things.cache.orders[oid][slot]
+			order = server.cache.orders[oid][slot]
 
 			# Remove the order if it isn't a colonise order
-			if order.subtype != things.COLONISE_ORDER:
+			if order.subtype != server.COLONISE_ORDER:
 				print "Colonise order - Current order (%r) wasn't a colonise order!" % order
 				OrderRemove(oid, slot)
 				continue
@@ -550,7 +550,7 @@ def OrderAdd_Colonise(asset, targets, slot):
 		else:
 			print "Colonise order - Issuing new order colonise %r" % (target,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, things.COLONISE_ORDER, target.id)
+			OrderCreate(oid, -1, server.COLONISE_ORDER, target.id)
 			break
 
 	return True
@@ -563,10 +563,10 @@ def OrderAdd_Merge(asset, target, slot):
 	oid = asset.ref.id
 	while True:
 		if asset.ref.order_number > slot:
-			order = things.cache.orders[oid][slot]
+			order = server.cache.orders[oid][slot]
 
 			# Remove the order if it isn't a move order
-			if order.subtype != things.MERGEFLEET_ORDER:
+			if order.subtype != server.MERGEFLEET_ORDER:
 				print "Merge order    - Current order (%r) wasn't a Merge order!" % order
 				OrderRemove(oid, slot)
 				continue
@@ -577,7 +577,7 @@ def OrderAdd_Merge(asset, target, slot):
 		else:
 			print "Merge order    - Issuing orders to merge with %r" % (target.ref,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, things.MERGEFLEET_ORDER)
+			OrderCreate(oid, -1, server.MERGEFLEET_ORDER)
 			break
 
 	return True
@@ -586,8 +586,8 @@ def OrderAdd_Build(asset, task, slot):
 	oid = asset.ref.id
 
 	# Do a "probe" to work out the types
-	OrderCreate(oid, 0, things.BUILDFLEET_ORDER, [], [], 0, "")
-	result = things.cache.orders[oid][0]
+	OrderCreate(oid, 0, server.BUILDFLEET_ORDER, [], [], 0, "")
+	result = server.cache.orders[oid][0]
 	OrderRemove(oid, 0)
 	ships = {}
 	for id, name, max in result.ships[0]:
@@ -607,10 +607,10 @@ def OrderAdd_Build(asset, task, slot):
 
 	while True:
 		if asset.ref.order_number > slot:
-			order = things.cache.orders[oid][slot]
+			order = server.cache.orders[oid][slot]
 
 			# Remove the order if it isn't a colonise order
-			if order.subtype != things.BUILDFLEET_ORDER:
+			if order.subtype != server.BUILDFLEET_ORDER:
 				print "Build order    - Current order (%r) wasn't a build order!" % order
 				OrderRemove(oid, slot)
 				continue
@@ -626,7 +626,7 @@ def OrderAdd_Build(asset, task, slot):
 		else:
 			print "Build order    - Issuing new order build."
 			# We need to issue a move order instead.
-			OrderCreate(oid, 0, things.BUILDFLEET_ORDER, [], tobuild, 0, "A robot army!")
+			OrderCreate(oid, 0, server.BUILDFLEET_ORDER, [], tobuild, 0, "A robot army!")
 			break
 
 	return True
