@@ -1,6 +1,6 @@
 
 import server
-from things import Reference, Asset, OrderCreate, OrderRemove
+from things import Reference, Asset, OrderCreate, OrderRemove, dist
 
 """
 
@@ -318,7 +318,7 @@ class Task(Reference):
 		distances = {}
 
 		for fulfilment in self.fulfilments():
-			distances[server.dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
+			distances[dist(fulfilment.asset.ref.pos, self.ref.pos[0])] = (fulfilment.asset, fulfilment.direct)
 
 		keys = distances.keys()
 		keys.sort()
