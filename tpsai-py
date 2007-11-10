@@ -59,7 +59,7 @@ def task_next(asset, distances):
 
 			# Work out the portion of this task we are actually going to build
 			if task.type in (Task.DESTROY, Task.TAKEOVER):
-				portion = (BATTLESHIP_POWER/(task.power[0]()+MARGIN))*100
+				portion = (server.BATTLESHIP_POWER/(task.power[0]()+MARGIN))*100
 
 			return task, Task.Fulfilment(asset, soon, portion, direct=False)
 
