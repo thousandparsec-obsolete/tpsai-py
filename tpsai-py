@@ -469,6 +469,9 @@ def persisence():
 							print "Exiting"
 							sys.exit(0)
 					except Exception, e:
+						if isinstance(e, SystemExit):
+							sys.exit(0)
+
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 						import traceback
