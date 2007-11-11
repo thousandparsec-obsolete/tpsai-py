@@ -250,16 +250,10 @@ def run(connection, cache):
 				if not combined:
 					threats.append(Threat([object]))
 
-	print "\nStep 0. Check we have any assets"
-	print "------------------------------------------------------------------"
 	if len(assets) == 0:
 		print "We have no assests!!"
 		print "Exiting..."
 		return False
-
-	print "We have %s assets" % len(assets)
-	print "There are %s threats" % len(threats)
-	print "There are %s neutrals" % len(neutrals)
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
@@ -379,8 +373,69 @@ def run(connection, cache):
 		if no > 0:
 			print "On board %i removing %i messages." % (bid, no)
 			connection.remove_messages(bid, slots=range(0, no))
-	
+
+	print "\nStep 7. Status report..."
+	print "------------------------------------------------------------------"
+
+	planets, ships = countthings(assets)
+	print "My total empire is:"
+	print "  %6i Planets" % planets
+	for shipid, amount in ships.items(): 
+		print "  %6i %s%s" % (amount, server.cache.designs[shipid].name, ['', 's'][amount > 1])
+
+	# Count all the ships we have queued
+	ships   = {}
+	for oid, orders in cache.orders.items():
+		for order in orders:
+			if order.subtype != server.BUILDFLEET_ORDER:
+				continue
+			
+			tonames, tobuild = order.ships
+			names = {}
+			for id, name, max in tonames:
+				names[id] = name
+
+			for id, amount in tobuild:
+				try:
+					ships[names[id]] += amount
+				except:
+					ships[names[id]]  = amount
+
+	if len(ships) > 0:
+		print
+		print "I have queued:"
+		for shipname, amount in ships.items(): 
+			print "  %6i %s%s" % (amount, shipname, ['', 's'][amount > 1])
+
+	# Count all the threats
+	planets, ships = countthings(threats)
+	print	
+	print "The total enemies are:"
+	print "  %6i Planets" % planets
+	for shipid, amount in ships.items(): 
+		print "  %6i %s%s" % (amount, server.cache.designs[shipid].name, ['', 's'][amount > 1])
+	print
+
 	return True
+
+def countthings(things):
+	"""
+	Count the total number of planets and ships in a list of references.
+	"""
+	ships   = {}
+	planets = 0
+	for thing in things:
+		for ref in thing.refs:
+			if server.FLEET_TYPE == ref._subtype:
+				for shipid, amount in ref.ships:
+					try:
+						ships[shipid] += amount
+					except:
+						ships[shipid]  = amount
+			if server.PLANET_TYPE == ref._subtype:
+				planets += 1
+
+	return planets, ships
 
 import time, gc, random
 def persisence():
