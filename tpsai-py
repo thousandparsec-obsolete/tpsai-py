@@ -250,8 +250,16 @@ def run(connection, cache):
 				if not combined:
 					threats.append(Threat([object]))
 
-	for threat in threats:
-		print threat
+	print "\nStep 0. Check we have any assets"
+	print "------------------------------------------------------------------"
+	if len(assets) == 0:
+		print "We have no assests!!"
+		print "Exiting..."
+		return False
+
+	print "We have %s assets" % len(assets)
+	print "There are %s threats" % len(threats)
+	print "There are %s neutrals" % len(neutrals)
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
@@ -371,6 +379,8 @@ def run(connection, cache):
 		if no > 0:
 			print "On board %i removing %i messages." % (bid, no)
 			connection.remove_messages(bid, slots=range(0, no))
+	
+	return True
 
 import time, gc, random
 def persisence():
@@ -400,7 +410,9 @@ def persisence():
 							print
 
 						collected = None
-						run(connection, cache)
+						if not run(connection, cache):
+							print "Exiting"
+							sys.exit(0)
 					except Exception, e:
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 						print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
