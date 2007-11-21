@@ -183,7 +183,7 @@ def connect():
 	connection = Connection()
 
 	# Download the entire universe
-	if connection.setup(host=host, debug=False):
+	if connection.setup(host=host, debug=debug):
 		print "Unable to connect to the host."
 		return
 
@@ -254,6 +254,10 @@ def run(connection, cache):
 		print "We have no assests!!"
 		print "Exiting..."
 		return False
+	else:
+		print "I have  %8i assets" % len(assets)
+		print "Neutral %8i objects" % len(neutrals)
+		print "Threats %8i" % len(threats)
 
 	# Now we need to collect all threats 
 	#  - All threats in a single location are merge
