@@ -471,36 +471,36 @@ def persisence():
 	state = State()
 
 	connection, cache = connect()
-	while True:
-		connection.pump()
-		pending = connection.buffered['frames-async']
-		while len(pending) > 0:
-			frame = pending.pop(0)
+	try:
+		while True:
+			connection.pump()
+			pending = connection.buffered['frames-async']
+			while len(pending) > 0:
+				frame = pending.pop(0)
 
-			# Ignore anything apart from TimeRemaining frames
-			if not isinstance(frame, objects.TimeRemaining):
-				continue
+				# Ignore anything apart from TimeRemaining frames
+				if not isinstance(frame, objects.TimeRemaining):
+					continue
 
-			if frame.time == 0:
-				if state in (state.TURNGEN, state.SLEEPING, state.RUNNING):
-					state.setstate(state.TURNNEXT)
-			if frame.time != 0:
-				if state in (state.TURNNEXT, state.SLEEPING):
-					state.setstate(state.SLEEPING, frame.time)
+				if frame.time == 0:
+					if state in (state.TURNGEN, state.SLEEPING, state.RUNNING):
+						state.setstate(state.TURNNEXT)
+				if frame.time != 0:
+					if state in (state.TURNNEXT, state.SLEEPING):
+						state.setstate(state.SLEEPING, frame.time)
 
-		if state in (state.TURNGEN, state.TURNNEXT):
-			time.sleep(0.1)
+			if state in (state.TURNGEN, state.TURNNEXT):
+				time.sleep(0.1)
 
-		if state == state.SLEEPING:
-			if time.time() > state.sleepto:
-				state.setstate(state.RUNNING)
-			else:
-				time.sleep(1)
-				sys.stdout.write('.')
-				sys.stdout.flush()
+			if state == state.SLEEPING:
+				if time.time() > state.sleepto:
+					state.setstate(state.RUNNING)
+				else:
+					time.sleep(1)
+					sys.stdout.write('.')
+					sys.stdout.flush()
 
-		if state == state.RUNNING:
-			try:
+			if state == state.RUNNING:
 				if not run(connection, cache):
 					sys.exit(0)
 
@@ -513,21 +513,21 @@ def persisence():
 
 				state.setstate(state.TURNGEN)
 
-			except Exception, e:
-				if isinstance(e, SystemExit):
-					sys.exit(0)
+	except Exception, e:
+		if isinstance(e, SystemExit):
+			sys.exit(0)
 
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				import traceback
-				traceback.print_exc()
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		import traceback
+		traceback.print_exc()
+		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 
-				import os
-				print sys.argv
-				os.execl(__file__, *sys.argv)
-				sys.exit(1)
+		import os
+		print sys.argv
+		os.execl(__file__, *sys.argv)
+		sys.exit(1)
 
 
 def main():
