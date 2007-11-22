@@ -518,10 +518,11 @@ def persisence():
 
 				state.setstate(state.TURNGEN)
 
-	except Exception, e:
-		if isinstance(e, SystemExit):
-			sys.exit(0)
+	except (SystemExit, KeyboardInterrupt), e:
+		import traceback
+		traceback.print_exc()
 
+	except Exception, e:
 		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 		print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 		import traceback
