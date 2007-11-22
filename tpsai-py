@@ -443,63 +443,92 @@ def countthings(things):
 
 import time, gc, random
 def persisence():
-	connection, cache = connect()
+	class State:
+		TURNGEN  = "1-Turn Generation" # The AI is waiting for turn generation to start
+		TURNNEXT = "2-Next Turn"       # The AI is waiting for the next turn to start
+		SLEEPING = "3-Sleeping"        # The AI is sleeping before performing an action
+		RUNNING  = "4-Running"         # The AI is doing some calculations..
 
-	collected = None
-	eotinprogress = False
+		def __init__(self):
+			self.state   = self.TURNGEN
+			self.sleepto = 0
+
+		def setstate(self, state, *args):
+			self.state = state
+
+			if state == self.SLEEPING:
+				wait = args[0]/3
+
+				if (not "--nosleep" in sys.argv) and wait > 20:
+					sleepfor = random.randint(0, min(wait, 60))
+
+					print "\nSleeping for %i seconds ." % sleepfor,
+					self.sleepto = time.time()+sleepfor
+
+		def __eq__(self, other):
+			return self.state == other
+
+	state = State()
+
+	connection, cache = connect()
 	while True:
 		connection.pump()
-
 		pending = connection.buffered['frames-async']
-		if len(pending) > 0:
-			while len(pending) > 0:
-				frame = pending.pop(0)
-				if isinstance(frame, objects.TimeRemaining):
-					if frame.time == 0:
-						eotinprogress = True
-						continue
+		while len(pending) > 0:
+			frame = pending.pop(0)
 
-					if eotinprogress:
-						eotinprogress = False
-						try:
-							if (not "--nosleep" in sys.argv) and frame.time/3 > 20:
-								sleepfor = random.randint(0, min(frame.time/3, 60))
-								print "Sleeping for %s seconds before downloading." % sleepfor,
-								sys.stdout.flush()
-								for i in xrange(0, sleepfor):
-									time.sleep(1)
-									sys.stdout.write('.')
-									sys.stdout.flush()
-								print
-	
-							collected = None
-							if not run(connection, cache):
-								print "Exiting"
-								sys.exit(0)
-						except Exception, e:
-							if isinstance(e, SystemExit):
-								sys.exit(0)
-	
-							print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-							print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-							import traceback
-							traceback.print_exc()
-							print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-							print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-	
-							import os
-							print sys.argv
-							os.execl(__file__, *sys.argv)
-							sys.exit(1)
+			# Ignore anything apart from TimeRemaining frames
+			if not isinstance(frame, objects.TimeRemaining):
+				continue
 
-		else:
-			if collected is None:
+			if frame.time == 0:
+				if state in (state.TURNGEN, state.SLEEPING, state.RUNNING):
+					state.setstate(state.TURNNEXT)
+			if frame.time != 0:
+				if state in (state.TURNNEXT, state.SLEEPING):
+					state.setstate(state.SLEEPING, frame.time)
+
+		if state in (state.TURNGEN, state.TURNNEXT):
+			time.sleep(0.1)
+
+		if state == state.SLEEPING:
+			if time.time() > state.sleepto:
+				state.setstate(state.RUNNING)
+			else:
+				time.sleep(1)
+				sys.stdout.write('.')
+				sys.stdout.flush()
+
+		if state == state.RUNNING:
+			try:
+				if not run(connection, cache):
+					sys.exit(0)
+
+				# Clean up any garbage
 				collected = gc.collect()
 				if collected > 0:
 					print
 					print "Collected %i objects." % collected
 				sys.stdout.flush()
-			time.sleep(0.1)	
+
+				state.setstate(state.TURNGEN)
+
+			except Exception, e:
+				if isinstance(e, SystemExit):
+					sys.exit(0)
+
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				import traceback
+				traceback.print_exc()
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+				print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+
+				import os
+				print sys.argv
+				os.execl(__file__, *sys.argv)
+				sys.exit(1)
+
 
 def main():
 	run(*connect())
