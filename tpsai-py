@@ -378,6 +378,11 @@ def run(connection, cache):
 			print "On board %i removing %i messages." % (bid, no)
 			connection.remove_messages(bid, slots=range(0, no))
 
+	print
+	print "Sending turn finished frame..."
+	if hasattr(connection, "turnfinished"):
+		connection.turnfinished()
+
 	print "\nStep 7. Status report..."
 	print "------------------------------------------------------------------"
 
