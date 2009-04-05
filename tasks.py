@@ -349,14 +349,14 @@ class Task(Reference):
 				used_assets.append(fulfilment.asset)
 
 				print "Orders for", fulfilment.asset.__str__(True)
-				slot=0
+				orders = []
 				if fulfilment.direct:
-					slot += OrderAdd_Move(fulfilment.asset, flagship.pos[0], slot)
+					orders.append(Order_Move(fulfilment.asset, flagship.pos[0], slot))
 					if flagbuilt:
-						slot += OrderAdd_Merge(fulfilment.asset, flagship, slot)
+						orders.append(Order_Merge(fulfilment.asset, flagship, slot))
 				else:
-					slot += OrderAdd_Build(fulfilment.asset, self, slot)
-				OrderAdd_Nothing(fulfilment.asset, slot)
+					orders.append(Order_Build(fulfilment.asset, self, slot))
+				
 				OrderPrint(fulfilment.asset)
 
 		return used_assets
@@ -366,7 +366,6 @@ class Task(Reference):
 		Issues the correct orders to fufill this task..
 		"""
 		raise SyntaxError("This task doesn't impliment the requirements order!")
-
 
 
 class TaskDestroy(Task):
@@ -386,13 +385,13 @@ class TaskDestroy(Task):
 			used_assets.append(fulfilment.asset)
 
 			print "Orders for", fulfilment.asset.__str__(True)
-			slot = 0
+			orders = []
 			if fulfilment.direct:
 				# FIXME: Should actually try an intercept the target!
-				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
+				orders.append(Order_Move(fulfilment.asset, self.ref.pos[0]))
 			else:
-				slot += OrderAdd_Build(fulfilment.asset, self, slot)
-			OrderAdd_Nothing(fulfilment.asset, slot)
+				orders.append(Order_Build(fulfilment.asset, self))
+
 			OrderPrint(fulfilment.asset)
 
 		return used_assets
@@ -415,13 +414,13 @@ class TaskColonise(Task):
 			used_assets.append(fulfilment.asset)
 
 			print "Orders for", fulfilment.asset.__str__(True)
-			slot = 0
+			orders = []
 			if fulfilment.direct:
-				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
-				slot += OrderAdd_Colonise(fulfilment.asset, self.ref, slot)
+				orders.append(Order_Move(fulfilment.asset, self.ref.pos[0]))
+				orders.append(Order_Colonise(fulfilment.asset, self.ref))
 			else:
-				slot += OrderAdd_Build(fulfilment.asset, self, slot)
-			OrderAdd_Nothing(fulfilment.asset, slot)
+				orders.append(Order_Build(fulfilment.asset, self))
+
 			OrderPrint(fulfilment.asset)
 
 		return used_assets
@@ -441,13 +440,13 @@ class TaskTakeOver(TaskColonise):
 			used_assets.append(fulfilment.asset)
 
 			print "Orders for", fulfilment.asset.__str__(True)
-			slot=0
+			orders = []
 			if fulfilment.direct:
-				slot += OrderAdd_Move(fulfilment.asset, self.ref.pos[0], slot)
-				slot += OrderAdd_Colonise(fulfilment.asset, self.ref, slot)
+				orders.append(Order_Move(fulfilment.asset, self.ref.pos[0]))
+				orders.append(Order_Colonise(fulfilment.asset, self.ref))
 			else:
-				slot += OrderAdd_Build(fulfilment.asset, self, slot)
-			OrderAdd_Nothing(fulfilment.asset, slot)
+				orders.append(Order_Build(fulfilment.asset, self))
+
 			OrderPrint(fulfilment.asset)
 
 		return used_assets
@@ -466,24 +465,7 @@ def OrderPrint(asset):
 		print "Order %i will complete in %.2f turns (%r)" % (i, order.turns, order)
 	print
 
-def OrderAdd_Nothing(asset, slot):
-	"""\
-	This function removed any remaining orders which might still exist!
-	"""
-	oid = asset.ref.id
-	while True:
-		# Check if the asset already has this order
-		if asset.ref.order_number > slot:
-			order = server.cache.orders[oid][slot]
-			
-			print "Extra order    - Remove this %r extra order" % (order,)
-			OrderRemove(oid, slot)
-		else:
-			break
-	return True
-
-
-def OrderAdd_Move(asset, pos, slot):
+def Order_Move(asset, pos, slot):
 	"""\
 	This function issues orders for the asset to move to the given position.
 
@@ -519,11 +501,11 @@ def OrderAdd_Move(asset, pos, slot):
 		else:
 			print "Move order     - Issuing new order to move too %s" % (pos,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, server.MOVE_ORDER, pos)
+			OrderCreateAfter(oid, -1, server.MOVE_ORDER, pos)
 			break
 	return True
 
-def OrderAdd_Colonise(asset, targets, slot):
+def Order_Colonise(asset, targets, slot):
 	# Find the planet which we want to colonise
 	target = None
 	for ref in targets.refs:
@@ -550,12 +532,12 @@ def OrderAdd_Colonise(asset, targets, slot):
 		else:
 			print "Colonise order - Issuing new order colonise %r" % (target,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, server.COLONISE_ORDER, target.id)
+			OrderCreateAfter(oid, -1, server.COLONISE_ORDER, target.id)
 			break
 
 	return True
 
-def OrderAdd_Merge(asset, target, slot):
+def Order_Merge(asset, target, slot):
 	# FIXME: Check that asset and target are both Fleets!
 	if asset.ref.id == target.ref.id:
 		return False
@@ -577,16 +559,16 @@ def OrderAdd_Merge(asset, target, slot):
 		else:
 			print "Merge order    - Issuing orders to merge with %r" % (target.ref,)
 			# We need to issue a move order instead.
-			OrderCreate(oid, -1, server.MERGEFLEET_ORDER)
+			OrderCreateAfter(oid, -1, server.MERGEFLEET_ORDER)
 			break
 
 	return True
 
-def OrderAdd_Build(asset, task, slot):
+def Order_Build(asset, task, slot):
 	oid = asset.ref.id
 
 	# Do a "probe" to work out the types
-	OrderCreate(oid, 0, server.BUILDFLEET_ORDER, [], [], 0, "")
+	OrderCreateAfter(oid, 0, server.BUILDFLEET_ORDER, [], [], 0, "")
 	result = server.cache.orders[oid][0]
 	OrderRemove(oid, 0)
 	ships = {}
@@ -626,7 +608,7 @@ def OrderAdd_Build(asset, task, slot):
 		else:
 			print "Build order    - Issuing new order build."
 			# We need to issue a move order instead.
-			OrderCreate(oid, 0, server.BUILDFLEET_ORDER, [], tobuild, 0, "A robot army!")
+			OrderCreateAfter(oid, 0, server.BUILDFLEET_ORDER, [], tobuild, 0, "A robot army!")
 			break
 
 	return True

@@ -547,11 +547,9 @@ def main_try():
 
 if __name__ == "__main__":
 	if '-p' in sys.argv:
-		import hotshot
-		prof = hotshot.Profile("hotshot_stats")
-		prof.runcall(main)
-		prof.close()
-	if '-s' in sys.argv:
+		import cProfile, os
+		cProfile.run('main()', "profile_stats.%i" % os.getpid())
+	elif '-s' in sys.argv:
 		main()
 	else:
 		persisence()

@@ -3,7 +3,7 @@
 from tp.netlib import Connection
 from tp.netlib import failed, constants, objects
 from tp.netlib.client import url2bits
-from tp.client.cache import Cache
+from tp.client.cache import Cache, apply
 
 import server
 
@@ -13,41 +13,8 @@ import math
 def dist(a, b):
 	return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
 
-# FIXME: Duplicated from libtpclient-py
-def apply(self, evt):
-	if evt.what == "orders":
-		if evt.action in ("remove", "change"):
-
-			r = self.remove_orders(evt.id, evt.slot)
-			if failed(r):
-				raise IOError("Unable to remove the order %s from %s (%s)..." % (evt.slot, evt.id, r[1]))
-		
-		if evt.action in ("create", "change"):
-			r = self.insert_order(evt.id, evt.slot, evt.change)
-			if failed(r):
-				raise IOError("Unable to insert the order %s (%r) from %s (%s)..." % (evt.slot, evt.change, evt.id, r[1]))
-
-			if evt.slot == -1:
-				evt.slot = len(server.cache.orders[evt.id])
-				
-			o = self.get_orders(evt.id, evt.slot)
-			if failed(o):
-				raise IOError("Unable to get the order %s from %s (%s)..." % (evt.slot, evt.id, o[1]))
-
-			evt.change = o[0]
-	else:
-		raise ValueError("Can't deal with that yet!")
-
-def OrderCreate(oid, slot, type, *args):
-	order = objects.Order(0, oid, slot, type, 0, [], *args)
-	event = server.cache.CacheDirtyEvent("orders", "create", oid, slot, order)
-	server.connection.apply(event)
-	server.cache.apply(event)
-
-def OrderRemove(oid, slot):
-	event = server.cache.CacheDirtyEvent("orders", "remove", oid, slot, None)
-	server.connection.apply(event)
-	server.cache.apply(event)
+def OrderCreate(oid, type, *args):
+	return objects.Order(0, oid, -1, type, 0, [], *args)
 
 class LayeredIn(list):
 	def __contains__(self, value):
